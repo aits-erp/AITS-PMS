@@ -16,7 +16,8 @@ import axios from "axios";
 
 export default function SelfAppraisal() {
   // Backend API URL
-  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/self-appraisals";
+   const API_BASE = `${process.env.REACT_APP_API_BASE}/api/self-appraisals`;
+//  const API_BASE = process.env.REACT_APP_API_BASE || "https://pms-lj2e.onrender.com/api/self-appraisals";
   
   // Employee search state
   const [employeeData, setEmployeeData] = useState([]);
@@ -82,8 +83,8 @@ export default function SelfAppraisal() {
     setBackendError("");
     try {
       // Use the resignation API endpoints
-      const RESIGNATION_API = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/employee-resignation";
-      
+      //const RESIGNATION_API = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/employee-resignation";
+       const RESIGNATION_API = `${process.env.REACT_APP_API_BASE}/api/employee-resignation`;
       // Try /all-ids endpoint
       const response = await axios.get(`${RESIGNATION_API}/all-ids`);
       

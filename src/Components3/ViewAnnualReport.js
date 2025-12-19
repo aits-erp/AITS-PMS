@@ -4,8 +4,8 @@ import * as XLSX from "xlsx";
 import axios from "axios";
 
 export default function ViewAnnualReport({ onEditReport, refreshTrigger }) {
-  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/annual-reports";
-  
+//  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/annual-reports";
+    const API_BASE = `${process.env.REACT_APP_API_BASE}/api/annual-reports`;
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedRows, setSelectedRows] = useState([]);

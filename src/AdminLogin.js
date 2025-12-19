@@ -51,8 +51,8 @@ export default function AdminLogin({ onLoginSuccess }) {
   const [rememberMe, setRememberMe] = useState(false);
 
   // API configuration
-  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api";
-
+//  const API_BASE = process.env.REACT_APP_API_BASE || "https://pms-lj2e.onrender.com/api";
+    const API_BASE = `${process.env.REACT_APP_API_BASE}/api`;
   // Clear all form fields
   const clearForm = () => {
     setCompanyName("");

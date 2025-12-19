@@ -28,6 +28,8 @@ export default function Dashboard() {
   const [resignations, setResignations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+   //const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000";
+   const API_BASE = `${process.env.REACT_APP_API_BASE}`;
 
   // Fetch all data
   useEffect(() => {
@@ -37,13 +39,18 @@ export default function Dashboard() {
   const fetchAllData = async () => {
     try {
       setLoading(true);
-      
+
       // Fetch employees, PIPs, Goals, and Resignations in parallel
-      const [employeesResponse, pipsResponse, goalsResponse, resignationsResponse] = await Promise.all([
-        axios.get("http://localhost:5000/api/employee-details"),
-        axios.get("http://localhost:5000/api/pips"),
-        axios.get("http://localhost:5000/api/new-goals"),
-        axios.get("http://localhost:5000/api/employee-resignation")  // Fetch resignation data
+      const [
+        employeesResponse,
+        pipsResponse,
+        goalsResponse,
+        resignationsResponse
+      ] = await Promise.all([
+        axios.get(`${API_BASE}/api/employee-details`),
+        axios.get(`${API_BASE}/api/pips`),
+        axios.get(`${API_BASE}/api/new-goals`),
+        axios.get(`${API_BASE}/api/employee-resignation`)
       ]);
       
       if (employeesResponse.data.success) {

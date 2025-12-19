@@ -13,7 +13,8 @@ import * as XLSX from "xlsx";
 import axios from "axios";
 
 export default function EmployeeDetails({ editingEmployee, onSaveSuccess, onCancelEdit }) {
-  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000";
+  //const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000";
+  const API_BASE = `${process.env.REACT_APP_API_BASE}`;
   const RESIGNATION_API = `${API_BASE}/api/employee-resignation`;
   const EMPLOYEE_DETAILS_API = `${API_BASE}/api/employee-details`;
   

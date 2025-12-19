@@ -13,7 +13,10 @@ import {
 import axios from "axios";
 
 export default function KRAs({ onDataChanged, editingKRA, onCancelEdit }) {
-  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/kra";
+//  const API_BASE = process.env.REACT_APP_API_BASE || "https://pms-lj2e.onrender.com/api/kra";
+const API_BASE = `${process.env.REACT_APP_API_BASE}/api/kra`;
+
+
   
   const [template, setTemplate] = useState(editingKRA?.template || "");
   const [manualRate, setManualRate] = useState(editingKRA?.manualRate || false);
@@ -81,8 +84,8 @@ const fetchEmployeeData = async () => {
   setBackendError("");
   try {
     // Use the resignation API endpoints that exist
-    const RESIGNATION_API = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/employee-resignation";
-    
+    //const RESIGNATION_API = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/employee-resignation";
+    const RESIGNATION_API = `${process.env.REACT_APP_API_BASE}/api/employee-resignation`;
     // Try /all-ids first
     const response = await axios.get(`${RESIGNATION_API}/all-ids`);
     

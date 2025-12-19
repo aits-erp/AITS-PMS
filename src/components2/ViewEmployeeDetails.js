@@ -4,7 +4,8 @@ import * as XLSX from "xlsx";
 import axios from "axios";
 
 export default function ViewEmployeeDetails({ onEditEmployee, refreshTrigger }) {
-  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/employee-details";
+  //const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/employee-details";
+  const API_BASE = `${process.env.REACT_APP_API_BASE}/api/employee-details`;
   
   const [employeeData, setEmployeeData] = useState([]);
   const [loading, setLoading] = useState(true);

@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './EmployeeSideData.css'; // We'll create this CSS file
 
-const API_BASE_URL = 'http://localhost:5000/api';
-
+//const API_BASE = 'http://localhost:5000/api';
+// const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api";
+ const API_BASE = `${process.env.REACT_APP_API_BASE}/api`;
 const EmployeeSideData = ({ employeeId = 'EMP001' }) => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [goals, setGoals] = useState([]);
@@ -55,7 +56,7 @@ const EmployeeSideData = ({ employeeId = 'EMP001' }) => {
   // ============ GOAL FUNCTIONS ============
   const fetchGoals = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/employee/${employeeId}/goals`);
+      const response = await axios.get(`${API_BASE}/employee/${employeeId}/goals`);
       if (response.data.success) {
         setGoals(response.data.data);
       }
@@ -77,7 +78,7 @@ const EmployeeSideData = ({ employeeId = 'EMP001' }) => {
     }
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/employee/${employeeId}/goals`, {
+      const response = await axios.post(`${API_BASE}/employee/${employeeId}/goals`, {
         text: goalText
       });
       
@@ -96,7 +97,7 @@ const EmployeeSideData = ({ employeeId = 'EMP001' }) => {
 
   const updateGoal = async () => {
     try {
-      const response = await axios.put(`${API_BASE_URL}/employee/goals/${editGoalData.id}`, {
+      const response = await axios.put(`${API_BASE}/employee/goals/${editGoalData.id}`, {
         text: editGoalData.text,
         priority: editGoalData.priority
       });
@@ -116,7 +117,7 @@ const EmployeeSideData = ({ employeeId = 'EMP001' }) => {
     if (!window.confirm('Are you sure you want to delete this goal?')) return;
 
     try {
-      const response = await axios.delete(`${API_BASE_URL}/employee/goals/${goalId}`);
+      const response = await axios.delete(`${API_BASE}/employee/goals/${goalId}`);
       
       if (response.data.success) {
         showMessage('Goal deleted successfully', 'success');
@@ -131,7 +132,7 @@ const EmployeeSideData = ({ employeeId = 'EMP001' }) => {
 
   const toggleGoalCompletion = async (goalId, currentStatus) => {
     try {
-      const response = await axios.patch(`${API_BASE_URL}/employee/goals/${goalId}/toggle`, {
+      const response = await axios.patch(`${API_BASE}/employee/goals/${goalId}/toggle`, {
         completed: !currentStatus
       });
       
@@ -158,7 +159,7 @@ const EmployeeSideData = ({ employeeId = 'EMP001' }) => {
   // ============ QUERY FUNCTIONS ============
   const fetchQueries = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/employee/${employeeId}/queries`);
+      const response = await axios.get(`${API_BASE}/employee/${employeeId}/queries`);
       if (response.data.success) {
         setQueries(response.data.data);
       }
@@ -179,7 +180,7 @@ const EmployeeSideData = ({ employeeId = 'EMP001' }) => {
     }
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/employee/${employeeId}/queries`, {
+      const response = await axios.post(`${API_BASE}/employee/${employeeId}/queries`, {
         queryText
       });
       
@@ -198,7 +199,7 @@ const EmployeeSideData = ({ employeeId = 'EMP001' }) => {
   // ============ FEEDBACK FUNCTIONS ============
   const fetchFeedback = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/employee/${employeeId}/feedback`);
+      const response = await axios.get(`${API_BASE}/employee/${employeeId}/feedback`);
       if (response.data.success) {
         setFeedback(response.data.data);
       }
@@ -219,7 +220,7 @@ const EmployeeSideData = ({ employeeId = 'EMP001' }) => {
     }
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/employee/${employeeId}/feedback`, {
+      const response = await axios.post(`${API_BASE}/employee/${employeeId}/feedback`, {
         feedbackText
       });
       
@@ -238,7 +239,7 @@ const EmployeeSideData = ({ employeeId = 'EMP001' }) => {
   // ============ PERFORMANCE FUNCTIONS ============
   const fetchPerformance = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/employee/${employeeId}/performance`);
+      const response = await axios.get(`${API_BASE}/employee/${employeeId}/performance`);
       if (response.data.success) {
         setPerformance(response.data.data);
       }
@@ -261,7 +262,7 @@ const EmployeeSideData = ({ employeeId = 'EMP001' }) => {
   // ============ DASHBOARD STATS FUNCTIONS ============
   const fetchDashboardStats = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/employee/${employeeId}/dashboard/stats`);
+      const response = await axios.get(`${API_BASE}/employee/${employeeId}/dashboard/stats`);
       if (response.data.success) {
         setDashboardStats(response.data.data);
       }

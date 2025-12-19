@@ -4,7 +4,8 @@ import * as XLSX from "xlsx";
 import axios from "axios";
 
 export default function ViewUserView() {
-  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/user-views";
+//  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/user-views";
+  const API_BASE = `${process.env.REACT_APP_API_BASE}/api/user-views`;
   const USER_ID = "ethan-hunt";
   
   // State for contacts with name and employeeId

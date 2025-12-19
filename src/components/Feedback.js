@@ -39,7 +39,9 @@ export default function Feedback({ onFeedbackAdded, initialData = null, onCancel
   const [isEditing, setIsEditing] = useState(!!initialData);
 
   // API base URLs
-  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000";
+  //const API_BASE = process.env.REACT_APP_API_BASE || "https://pms-lj2e.onrender.com";
+const API_BASE = `${process.env.REACT_APP_API_BASE}`;
+
   const FEEDBACK_API = `${API_BASE}/api/feedback`;
   const RESIGNATION_API = `${API_BASE}/api/employee-resignation`;
 

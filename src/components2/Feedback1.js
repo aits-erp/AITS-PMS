@@ -10,11 +10,13 @@ import {
   FaTimes,
   FaIdCard 
 } from "react-icons/fa";
+
 import * as XLSX from "xlsx";
 import axios from "axios";
 
 export default function Feedback1({ editingFeedback, onSaveSuccess, onCancelEdit }) {
-  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000";
+  //const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000";
+  const API_BASE = `${process.env.REACT_APP_API_BASE}`;
   const FEEDBACK_API = `${API_BASE}/api/feedback1`;
   const RESIGNATION_API = `${API_BASE}/api/employee-resignation`;
   

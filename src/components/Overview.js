@@ -11,8 +11,8 @@ import {
   FaTimes,
   FaIdCard 
 } from "react-icons/fa";
-
-const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000";
+const API_BASE = `${process.env.REACT_APP_API_BASE}`;
+//const API_BASE = process.env.REACT_APP_API_BASE || "https://pms-lj2e.onrender.com";
 const RESIGNATION_API = `${API_BASE}/api/employee-resignation`;
 
 export default function Overview({ editingItem, onSaveSuccess, onCancelEdit }) {

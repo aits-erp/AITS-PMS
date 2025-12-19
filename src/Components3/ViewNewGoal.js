@@ -5,8 +5,8 @@ import * as XLSX from "xlsx";
 import axios from "axios";
 
 export default function ViewNewGoal({ onEditGoal, refreshTrigger }) {
-  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/new-goals";
-  
+//  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/new-goals";
+  const API_BASE = `${process.env.REACT_APP_API_BASE}/api/new-goals`;
   const [goals, setGoals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedRows, setSelectedRows] = useState([]);

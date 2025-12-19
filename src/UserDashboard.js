@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   RefreshCw, List, Zap, User, Star, Plus, Check, Phone, Save, Edit, 
   X, AlertTriangle, TrendingUp, TrendingDown, Layers, BookOpen, 
-  Send, LogOut, Key 
+  Send, LogOut, Key, Trash2 
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -21,7 +21,11 @@ const ReminderModal = ({ goals, onClose }) => {
             <AlertTriangle className="w-6 h-6 mr-2 text-yellow-500" />
             Action Required: {incompleteGoals.length} Active Reminders
           </h2>
-          <button onClick={onClose} className="p-1 rounded-full text-gray-500 hover:bg-gray-100 transition">
+          <button 
+            onClick={onClose} 
+            className="p-1 rounded-full text-gray-500 hover:bg-gray-100 transition"
+            type="button"
+          >
             <X className="w-6 h-6" />
           </button>
         </div>
@@ -43,6 +47,7 @@ const ReminderModal = ({ goals, onClose }) => {
           <button
             onClick={onClose}
             className="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-colors active:scale-95"
+            type="button"
           >
             Got It
           </button>
@@ -84,19 +89,11 @@ const UserDashboard = ({ onLogout }) => {
   const [feedbackSubmissionStatus, setFeedbackSubmissionStatus] = useState(null);
   const [showLogoutButton, setShowLogoutButton] = useState(false);
 
-  // Refs for input fields
-  const newGoalInputRef = useRef(null);
-  const feedbackTextareaRef = useRef(null);
-  const queryTextareaRef = useRef(null);
+  // Single refs for inputs
   const contactInputRef = useRef(null);
-
-  // Local refs to prevent focus loss
-  const localGoalInputRef = useRef(null);
-  const localFeedbackTextareaRef = useRef(null);
-  const localQueryTextareaRef = useRef(null);
-  const localContactInputRef = useRef(null);
-
-  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api";
+  const newGoalInputRef = useRef(null);
+const API_BASE = `${process.env.REACT_APP_API_BASE}/api`;
+//  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api";
 
   const getEmployeeToken = () => {
     return localStorage.getItem('employeeToken');
@@ -581,12 +578,12 @@ const UserDashboard = ({ onLogout }) => {
     
     setNewGoalText('');
     
-    // Focus back on input after adding
+    // Keep focus on input after adding
     setTimeout(() => {
-      if (localGoalInputRef.current) {
-        localGoalInputRef.current.focus();
+      if (newGoalInputRef.current) {
+        newGoalInputRef.current.focus();
       }
-    }, 50);
+    }, 0);
   }, [newGoalText, isOfflineMode, employeeData.employeeId, employeeData.fullName, API_BASE, fetchGoalsData]);
 
   const toggleGoal = useCallback(async (goal) => {
@@ -1000,64 +997,76 @@ const UserDashboard = ({ onLogout }) => {
     </div>
   ), []);
 
-  const RenderFeedbackForm = useCallback(() => (
-    <div className="mt-4 p-5 bg-gray-100 border rounded-lg">
-      <h4 className="font-bold text-gray-800 mb-3 text-lg">
-        Confidential 360 Feedback
-      </h4>
-      <textarea
-        ref={localFeedbackTextareaRef}
-        id="feedback-textarea"
-        name="feedback"
-        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-yellow-500 focus:border-yellow-500 text-base h-36 resize-none"
-        placeholder="Enter feedback for a colleague or manager (it will be anonymous)..."
-        value={feedbackText}
-        onChange={(e) => setFeedbackText(e.target.value)}
-      />
-      <button
-        onClick={submit360Feedback}
-        disabled={!feedbackText.trim() || isFeedbackSubmitting}
-        className={`w-full py-3 px-4 rounded-lg font-semibold transition-all shadow-md active:scale-95 mt-3 flex items-center justify-center space-x-2 text-base
-          ${!feedbackText.trim() || isFeedbackSubmitting 
-            ? 'bg-gray-300 text-gray-600 cursor-not-allowed' 
-            : 'bg-yellow-500 hover:bg-yellow-600 text-white'}`
-        }
-      >
-        {isFeedbackSubmitting ? (
-          <>
-            <RefreshCw className="w-5 h-5 animate-spin" />
-            <span>Submitting...</span>
-          </>
-        ) : (
-          <>
-            <Send className="w-5 h-5" />
-            <span>{isOfflineMode ? 'Submit Feedback (Offline)' : 'Submit Feedback'}</span>
-          </>
-        )}
-      </button>
+  const RenderFeedbackForm = useCallback(() => {
+    const handleFeedbackKeyDown = (e) => {
+      if (e.key === 'Enter' && e.ctrlKey) {
+        e.preventDefault();
+        submit360Feedback();
+      }
+    };
 
-      {feedbackSubmissionStatus === 'success' && (
-        <p className="mt-4 text-base text-green-600 font-medium flex items-center">
-          <Check className="w-5 h-5 mr-2"/> 
-          {isOfflineMode ? 'Saved for later sync!' : 'Feedback submitted successfully!'}
-        </p>
-      )}
-      {feedbackSubmissionStatus === 'error' && (
-        <p className="mt-4 text-base text-red-600 font-medium flex items-center">
-          <X className="w-5 h-5 mr-2"/> Submission failed.
-        </p>
-      )}
-    </div>
-  ), [feedbackText, isFeedbackSubmitting, isOfflineMode, submit360Feedback, feedbackSubmissionStatus]);
+    return (
+      <div className="mt-4 p-5 bg-gray-100 border rounded-lg">
+        <h4 className="font-bold text-gray-800 mb-3 text-lg">
+          Confidential 360 Feedback
+        </h4>
+        <textarea
+          id="feedback-textarea"
+          name="feedback"
+          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-yellow-500 focus:border-yellow-500 text-base h-36 resize-none"
+          placeholder="Enter feedback for a colleague or manager (it will be anonymous)..."
+          value={feedbackText}
+          onChange={(e) => setFeedbackText(e.target.value)}
+          onKeyDown={handleFeedbackKeyDown}
+        />
+        <button
+          onClick={submit360Feedback}
+          disabled={!feedbackText.trim() || isFeedbackSubmitting}
+          className={`w-full py-3 px-4 rounded-lg font-semibold transition-all shadow-md active:scale-95 mt-3 flex items-center justify-center space-x-2 text-base
+            ${!feedbackText.trim() || isFeedbackSubmitting 
+              ? 'bg-gray-300 text-gray-600 cursor-not-allowed' 
+              : 'bg-yellow-500 hover:bg-yellow-600 text-white'}`
+          }
+          type="button"
+        >
+          {isFeedbackSubmitting ? (
+            <>
+              <RefreshCw className="w-5 h-5 animate-spin" />
+              <span>Submitting...</span>
+            </>
+          ) : (
+            <>
+              <Send className="w-5 h-5" />
+              <span>{isOfflineMode ? 'Submit Feedback (Offline)' : 'Submit Feedback'}</span>
+            </>
+          )}
+        </button>
+
+        {feedbackSubmissionStatus === 'success' && (
+          <p className="mt-4 text-base text-green-600 font-medium flex items-center">
+            <Check className="w-5 h-5 mr-2"/> 
+            {isOfflineMode ? 'Saved for later sync!' : 'Feedback submitted successfully!'}
+          </p>
+        )}
+        {feedbackSubmissionStatus === 'error' && (
+          <p className="mt-4 text-base text-red-600 font-medium flex items-center">
+            <X className="w-5 h-5 mr-2"/> Submission failed.
+          </p>
+        )}
+      </div>
+    );
+  }, [feedbackText, isFeedbackSubmitting, isOfflineMode, submit360Feedback, feedbackSubmissionStatus]);
 
   const RenderResourcesAndSubmission = useCallback(() => {
     const handleQuerySubmit = () => {
       submitResourceQuery();
-      setTimeout(() => {
-        if (localQueryTextareaRef.current) {
-          localQueryTextareaRef.current.focus();
-        }
-      }, 50);
+    };
+
+    const handleQueryKeyDown = (e) => {
+      if (e.key === 'Enter' && e.ctrlKey) {
+        e.preventDefault();
+        handleQuerySubmit();
+      }
     };
 
     return (
@@ -1083,6 +1092,7 @@ const UserDashboard = ({ onLogout }) => {
                 <button
                   onClick={handleSyncOfflineData}
                   className="mt-2 bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
+                  type="button"
                 >
                   <RefreshCw className="w-4 h-4 inline mr-2" />
                   Sync Data Now
@@ -1096,6 +1106,7 @@ const UserDashboard = ({ onLogout }) => {
           <button 
             onClick={() => {setShowTrainingCatalog(!showTrainingCatalog); setShowFeedbackForm(false);}}
             className="w-full text-left p-4 rounded-lg border transition-colors duration-150 flex justify-between items-center text-gray-700 hover:bg-yellow-50 bg-white shadow-sm"
+            type="button"
           >
             <span className="font-medium flex items-center text-base">
               <BookOpen className="w-5 h-5 mr-3 text-yellow-600" />
@@ -1107,6 +1118,7 @@ const UserDashboard = ({ onLogout }) => {
           <button 
             onClick={() => {setShowFeedbackForm(!showFeedbackForm); setShowTrainingCatalog(false);}}
             className="w-full text-left p-4 rounded-lg border transition-colors duration-150 flex justify-between items-center text-gray-700 hover:bg-yellow-50 bg-white shadow-sm"
+            type="button"
           >
             <span className="font-medium flex items-center text-base">
               <Send className="w-5 h-5 mr-3 text-yellow-600" />
@@ -1123,13 +1135,13 @@ const UserDashboard = ({ onLogout }) => {
           Submit a General Support Query
         </h4>
         <textarea
-          ref={localQueryTextareaRef}
           id="query-textarea"
           name="query"
           className="w-full p-3 border border-yellow-300 rounded-lg focus:ring-yellow-500 focus:border-yellow-500 text-base h-32 resize-none"
           placeholder="Need help finding a resource? Submit your question here..."
           value={submissionText}
           onChange={(e) => setSubmissionText(e.target.value)}
+          onKeyDown={handleQueryKeyDown}
         />
         
         <button
@@ -1140,6 +1152,7 @@ const UserDashboard = ({ onLogout }) => {
               ? 'bg-gray-300 text-gray-600 cursor-not-allowed' 
               : 'bg-yellow-500 hover:bg-yellow-600 text-white'}`
           }
+          type="button"
         >
           {isSubmitting ? (
             <>
@@ -1266,25 +1279,22 @@ const UserDashboard = ({ onLogout }) => {
   const RenderPersonalInformation = useCallback(() => {
     const handleEditClick = () => {
       setIsEditingContact(true);
+      // Use setTimeout to ensure DOM is updated
       setTimeout(() => {
-        if (localContactInputRef.current) {
-          localContactInputRef.current.focus();
-          localContactInputRef.current.select();
+        if (contactInputRef.current) {
+          contactInputRef.current.focus();
+          contactInputRef.current.select();
         }
-      }, 100);
+      }, 10);
     };
 
     const handleContactSave = () => {
       handleSaveContactInfo();
-      setTimeout(() => {
-        if (localContactInputRef.current) {
-          localContactInputRef.current.blur();
-        }
-      }, 50);
     };
 
     const handleContactKeyDown = (e) => {
       if (e.key === 'Enter') {
+        e.preventDefault();
         handleContactSave();
       }
       if (e.key === 'Escape') {
@@ -1295,6 +1305,24 @@ const UserDashboard = ({ onLogout }) => {
         } else {
           setContactNumber(employeeData.phone || 'N/A (Click to Edit)');
         }
+      }
+    };
+
+    const handleContactBlur = (e) => {
+      // Check if blur is caused by clicking save/cancel buttons
+      const relatedTarget = e.relatedTarget;
+      const isButtonClick = relatedTarget && (
+        relatedTarget.closest('.contact-save-button') || 
+        relatedTarget.closest('.contact-cancel-button')
+      );
+      
+      if (!isButtonClick && isEditingContact) {
+        // Auto-save on blur if not clicking buttons
+        setTimeout(() => {
+          if (contactNumber.trim() && contactNumber !== 'N/A (Click to Edit)') {
+            handleContactSave();
+          }
+        }, 100);
       }
     };
 
@@ -1352,7 +1380,7 @@ const UserDashboard = ({ onLogout }) => {
                 <dd className="flex-1">
                   {isEditingContact ? (
                     <input
-                      ref={localContactInputRef}
+                      ref={contactInputRef}
                       id="contact-number-input"
                       name="contactNumber"
                       type="text"
@@ -1360,9 +1388,14 @@ const UserDashboard = ({ onLogout }) => {
                       value={contactNumber}
                       onChange={handleContactChange}
                       onKeyDown={handleContactKeyDown}
+                      onBlur={handleContactBlur}
+                      autoFocus
                     />
                   ) : (
-                    <span className="text-lg font-semibold text-gray-900">
+                    <span 
+                      className="text-lg font-semibold text-gray-900 cursor-pointer hover:text-yellow-600 transition-colors"
+                      onClick={handleEditClick}
+                    >
                       {contactNumber !== 'N/A (Click to Edit)' && contactNumber !== 'N/A' 
                         ? contactNumber 
                         : 'N/A (Click to Edit)'}
@@ -1375,7 +1408,8 @@ const UserDashboard = ({ onLogout }) => {
                   <>
                     <button
                       onClick={handleContactSave}
-                      className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg shadow-md transition-colors flex items-center space-x-2 text-lg"
+                      className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg shadow-md transition-colors flex items-center space-x-2 text-lg contact-save-button"
+                      type="button"
                     >
                       <Save className="w-5 h-5" />
                       <span>Save</span>
@@ -1390,7 +1424,8 @@ const UserDashboard = ({ onLogout }) => {
                           setContactNumber(employeeData.phone || 'N/A (Click to Edit)');
                         }
                       }}
-                      className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg shadow-md transition-colors flex items-center space-x-2 text-lg"
+                      className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg shadow-md transition-colors flex items-center space-x-2 text-lg contact-cancel-button"
+                      type="button"
                     >
                       <X className="w-5 h-5" />
                       <span>Cancel</span>
@@ -1400,7 +1435,7 @@ const UserDashboard = ({ onLogout }) => {
                   <button
                     onClick={handleEditClick}
                     className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg shadow-md transition-colors flex items-center space-x-2 text-lg"
-                    title="Edit Contact"
+                    type="button"
                   >
                     <Edit className="w-5 h-5" />
                     <span>Edit Contact</span>
@@ -1425,6 +1460,7 @@ const UserDashboard = ({ onLogout }) => {
 
     const handleKeyDown = (e) => {
       if (e.key === 'Enter') {
+        e.preventDefault(); // Prevent form submission
         handleAddGoalClick();
       }
     };
@@ -1452,7 +1488,7 @@ const UserDashboard = ({ onLogout }) => {
 
         <div className="flex mb-6 space-x-3 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
           <input
-            ref={localGoalInputRef}
+            ref={newGoalInputRef}
             id="new-goal-input"
             name="newGoal"
             type="text"
@@ -1462,9 +1498,12 @@ const UserDashboard = ({ onLogout }) => {
             onChange={(e) => setNewGoalText(e.target.value)}
             onKeyDown={handleKeyDown}
           />
+
           <button
             onClick={handleAddGoalClick}
+            onMouseDown={(e) => e.preventDefault()}
             className="bg-yellow-500 hover:bg-yellow-600 text-white p-3 rounded-lg transition-colors shadow-md active:scale-95 flex items-center justify-center space-x-2 font-semibold text-base"
+            type="button"
           >
             <Plus className="w-6 h-6" />
             <span className="hidden sm:inline">Add</span>
@@ -1481,6 +1520,7 @@ const UserDashboard = ({ onLogout }) => {
               <button
                 onClick={handleSyncOfflineData}
                 className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors flex items-center"
+                type="button"
               >
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Sync Now
@@ -1518,18 +1558,20 @@ const UserDashboard = ({ onLogout }) => {
               <div className="flex space-x-3">
                 <button
                   onClick={() => toggleGoal(goal)}
+                  onMouseDown={(e) => e.preventDefault()}
                   className={`p-2 rounded-full text-white transition-colors shadow-inner ${goal.completed ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-300 hover:bg-gray-400'}`}
+                  type="button"
                 >
                   <Check className="w-5 h-5" />
                 </button>
                 <button
                   onClick={() => deleteGoal(goal.id)}
+                  onMouseDown={(e) => e.preventDefault()}
                   className="text-red-500 hover:text-red-700 p-2 rounded-full transition-colors"
+                  type="button"
                   title="Delete Goal"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3m4 0h-4"></path>
-                  </svg>
+                  <Trash2 className="w-5 h-5" />
                 </button>
               </div>
             </li>
@@ -1557,7 +1599,6 @@ const UserDashboard = ({ onLogout }) => {
         <header className="mb-8 p-6 bg-white rounded-xl shadow-lg border-t-4 border-yellow-500">
           <div className="flex justify-between items-center flex-wrap">
             <div className="flex-1">
-				
               <h1 className="text-3xl font-extrabold text-gray-800 flex items-center">
                 
 				<img 

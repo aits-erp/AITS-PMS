@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './AllEmployeesData.css';
 
-const API_BASE_URL = 'http://localhost:5000/api';
-
+//const API_BASE = 'http://localhost:5000/api';
+//const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:5000/api';
+const API_BASE = `${process.env.REACT_APP_API_BASE}/api`;
 const AllEmployeesData = () => {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,7 +26,7 @@ const AllEmployeesData = () => {
       setError('');
       
       // Fetch from employee resignation endpoint
-      const response = await axios.get(`${API_BASE_URL}/employee-resignation`);
+      const response = await axios.get(`${API_BASE}/employee-resignation`);
       
       if (response.data.success) {
         const employeeData = response.data.data;
@@ -36,9 +37,9 @@ const AllEmployeesData = () => {
             try {
               // Fetch additional data for each employee
               const [goalsRes, queriesRes, performanceRes] = await Promise.allSettled([
-                axios.get(`${API_BASE_URL}/new-goals/employee/${emp.employeeId}`),
-                axios.get(`${API_BASE_URL}/employee/${emp.employeeId}/queries`),
-                axios.get(`${API_BASE_URL}/employee-details/by-employee-id/${emp.employeeId}`)
+                axios.get(`${API_BASE}/new-goals/employee/${emp.employeeId}`),
+                axios.get(`${API_BASE}/employee/${emp.employeeId}/queries`),
+                axios.get(`${API_BASE}/employee-details/by-employee-id/${emp.employeeId}`)
               ]);
 
               // Get goals data
@@ -188,7 +189,7 @@ const AllEmployeesData = () => {
       setLoading(true);
       setError('');
       
-      const response = await axios.get(`${API_BASE_URL}/employee-resignation`);
+      const response = await axios.get(`${API_BASE}/employee-resignation`);
       
       if (response.data.success) {
         const employeeData = response.data.data;

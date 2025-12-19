@@ -5,8 +5,10 @@ import * as XLSX from "xlsx";
 import axios from "axios";
 
 export default function ViewEmployeePromotion({ onEditPromotion, refreshTrigger }) {
-  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/employee-promotions";
+ //const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/employee-promotions";
+  const API_BASE = `${process.env.REACT_APP_API_BASE}/api/employee-promotions`;
   
+
   const [promotions, setPromotions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedRows, setSelectedRows] = useState([]);
@@ -27,20 +29,31 @@ export default function ViewEmployeePromotion({ onEditPromotion, refreshTrigger 
     loadPromotions();
   }, [refreshTrigger]);
 
-  const loadPromotions = async () => {
-    try {
-      setLoading(true);
-      const res = await axios.get(API_BASE);
-      setPromotions(res.data.data || res.data);
-      setSelectedRows([]);
-      setEditingRowId(null);
-    } catch (err) {
-      console.error("Error loading promotions", err);
-      alert("Failed to load promotions. Please try again.");
-    } finally {
-      setLoading(false);
+ const loadPromotions = async () => {
+  try {
+    setLoading(true);
+
+    const res = await axios.get(API_BASE);
+
+    console.log("FULL RESPONSE:", res.data);
+
+    if (res.data && Array.isArray(res.data.data)) {
+      setPromotions(res.data.data);
+    } else {
+      setPromotions([]);
     }
-  };
+
+  } catch (err) {
+    console.error("Error loading promotions", err);
+    alert("Failed to load promotions");
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+
+
 
   const handleDelete = async (id) => {
     if (!window.confirm("Are you sure you want to delete this promotion record?")) return;

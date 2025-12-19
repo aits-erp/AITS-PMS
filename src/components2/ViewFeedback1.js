@@ -5,7 +5,8 @@ import * as XLSX from "xlsx";
 import axios from "axios";
 
 export default function ViewFeedback1({ onEditFeedback, refreshTrigger }) {
-  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/feedback1";
+//  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/feedback1";
+  const API_BASE = `${process.env.REACT_APP_API_BASE}/api/feedback1`;
   
   const [feedbackData, setFeedbackData] = useState([]);
   const [loading, setLoading] = useState(true);

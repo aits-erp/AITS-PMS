@@ -23,7 +23,8 @@ export default function ViewFeedback({ onEditFeedback, refreshTrigger }) {
   });
 
   // API base URL
-  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/feedback";
+ // const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/feedback";
+    const API_BASE = `${process.env.REACT_APP_API_BASE}/api/feedback`;
 
   // Load feedback from backend
   useEffect(() => {

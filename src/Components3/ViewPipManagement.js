@@ -4,7 +4,8 @@ import * as XLSX from "xlsx";
 import axios from "axios";
 
 export default function ViewPipManagement({ onEditPip, refreshTrigger }) {
-  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/pips";
+	const API_BASE = `${process.env.REACT_APP_API_BASE}/api/pips`;
+  //const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/pips";
   
   const [pips, setPips] = useState([]);
   const [loading, setLoading] = useState(true);

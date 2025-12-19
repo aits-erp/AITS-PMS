@@ -4,8 +4,8 @@ import * as XLSX from "xlsx";
 import axios from "axios";
 
 export default function ViewKRAs({ onEditKRA, refreshTrigger }) {
-  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/kra";
-  
+  //const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/kra";
+  const API_BASE = `${process.env.REACT_APP_API_BASE}/api/kra`;
   const [kras, setKras] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingRowId, setEditingRowId] = useState(null);
