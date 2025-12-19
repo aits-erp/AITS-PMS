@@ -105,6 +105,7 @@ export default function SelfAppraisal() {
       
       // Fallback to /names endpoint
       try {
+		
         const RESIGNATION_API = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/employee-resignation";
         const response = await axios.get(`${RESIGNATION_API}/names`);
         

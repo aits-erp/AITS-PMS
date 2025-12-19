@@ -493,20 +493,7 @@ export default function Overview({ editingItem, onSaveSuccess, onCancelEdit }) {
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h5 className="fw-bold m-0">Overview Management</h5>
         <div className="d-flex align-items-center gap-2">
-          <button 
-            className="btn btn-sm btn-outline-info"
-            onClick={testBackendDirectly}
-            title="Test backend connection directly"
-          >
-            Test Backend
-          </button>
-          <button 
-            className="btn btn-sm btn-outline-warning"
-            onClick={checkMongoDBStatus}
-            title="Check MongoDB status"
-          >
-            Check MongoDB
-          </button>
+         
           {serverStatus === 'offline' && (
             <button 
               className="btn btn-sm btn-outline-primary"
@@ -878,41 +865,7 @@ export default function Overview({ editingItem, onSaveSuccess, onCancelEdit }) {
       </div>
       
       {/* Debug Panel */}
-      <div className="border rounded p-3 bg-light">
-        <h6 className="fw-bold mb-2">Debug Information</h6>
-        <div className="row">
-          <div className="col-md-6">
-            <small className="d-block">
-              <strong>Server Status:</strong> 
-              <span className={`ms-2 fw-bold ${serverStatus === 'online' ? 'text-success' : 'text-danger'}`}>
-                {serverStatus.toUpperCase()}
-              </span>
-            </small>
-            <small className="d-block">
-              <strong>Employee Data Count:</strong> 
-              <span className="ms-2">{employeeData.length}</span>
-            </small>
-            <small className="d-block">
-              <strong>API Base URL:</strong> 
-              <span className="ms-2">{API_BASE}</span>
-            </small>
-          </div>
-          <div className="col-md-6">
-            <small className="d-block">
-              <strong>Resignation API:</strong> 
-              <span className="ms-2">{RESIGNATION_API}/all-ids</span>
-            </small>
-            <small className="d-block">
-              <strong>Dropdown Visibility:</strong> 
-              <span className="ms-2">ID: {showIdDropdown ? 'Visible' : 'Hidden'}, Name: {showNameDropdown ? 'Visible' : 'Hidden'}</span>
-            </small>
-            <small className="d-block">
-              <strong>Search Terms:</strong> 
-              <span className="ms-2">ID: "{idSearchTerm}", Name: "{nameSearchTerm}"</span>
-            </small>
-          </div>
-        </div>
-      </div>
+      
     </div>
   );
 }

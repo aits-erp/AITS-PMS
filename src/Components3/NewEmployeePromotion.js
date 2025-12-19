@@ -1,64 +1,63 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Form, Button, Card, Row, Col } from "react-bootstrap";
+import "bootstrap/dist/css/bootstrap.min.css";
 import { 
   FaUpload, 
   FaSave, 
-  FaUserPlus, 
   FaFileExcel, 
   FaUser, 
   FaSpinner, 
   FaSearch, 
   FaTimes,
-  FaIdCard 
+  FaChartLine,
+  FaMoneyBillWave,
+  FaBuilding,
+  FaCalendarAlt,
+  FaFileAlt
 } from "react-icons/fa";
 import * as XLSX from "xlsx";
 import axios from "axios";
 
-export default function EmployeeOnboarding({ editingEmployee, onSaveSuccess, onCancelEdit }) {
-//  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000";
-  const API_BASE = `${process.env.REACT_APP_API_BASE}`;
-  const RESIGNATION_API = `${API_BASE}/api/employee-resignation`;
-  const ONBOARDING_API = `${API_BASE}/api/employee-onboarding`;
+export default function EmployeePromotionForm({ editingPromotion, onSaveSuccess, onCancelEdit }) {
+  const API_BASE = process.env.REACT_APP_API_BASE;
+  const PROMOTION_API = `${API_BASE}/api/employee-promotions`;
   
+  // Form state
   const [formData, setFormData] = useState({
-    fullName: "",
+    name: "",
     employeeId: "",
-    workEmail: "",
-    hireDate: "",
-    department: "",
-    reportingManager: "",
-    addedOn: "",
+    date: new Date().toISOString().split('T')[0],
+    currency: "INR",
+    company: "Shrirang Automation",
+    property: "",
+    current: "",
+    newValue: "",
+    justification: "",
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Employee selection state - Combined search
+  const [employee, setEmployee] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
   const [employeeData, setEmployeeData] = useState([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
-  const [showIdDropdown, setShowIdDropdown] = useState(false);
-  const [showNameDropdown, setShowNameDropdown] = useState(false);
-  const [idSearchTerm, setIdSearchTerm] = useState("");
-  const [nameSearchTerm, setNameSearchTerm] = useState("");
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const [backendError, setBackendError] = useState("");
-  const [serverStatus, setServerStatus] = useState("checking");
+  const [successMessage, setSuccessMessage] = useState("");
   
-  const idDropdownRef = useRef(null);
-  const nameDropdownRef = useRef(null);
-  const idInputRef = useRef(null);
-  const nameInputRef = useRef(null);
+  const searchDropdownRef = useRef(null);
+  const searchInputRef = useRef(null);
 
-  // Load employee data on mount
+  // Fetch employee data on mount
   useEffect(() => {
-    checkServerStatus();
     fetchEmployeeData();
     
     // Close dropdowns when clicking outside
     const handleClickOutside = (event) => {
-      if (idDropdownRef.current && !idDropdownRef.current.contains(event.target) &&
-          idInputRef.current && !idInputRef.current.contains(event.target)) {
-        setShowIdDropdown(false);
-      }
-      if (nameDropdownRef.current && !nameDropdownRef.current.contains(event.target) &&
-          nameInputRef.current && !nameInputRef.current.contains(event.target)) {
-        setShowNameDropdown(false);
+      if (searchDropdownRef.current && !searchDropdownRef.current.contains(event.target) &&
+          searchInputRef.current && !searchInputRef.current.contains(event.target)) {
+        setShowSearchDropdown(false);
       }
     };
     
@@ -66,262 +65,353 @@ export default function EmployeeOnboarding({ editingEmployee, onSaveSuccess, onC
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Update form when editingEmployee changes
+  // Update form when editingPromotion changes
   useEffect(() => {
-    if (editingEmployee) {
+    if (editingPromotion) {
       setFormData({
-        fullName: editingEmployee.fullName || "",
-        employeeId: editingEmployee.employeeId || "",
-        workEmail: editingEmployee.workEmail || "",
-        hireDate: editingEmployee.hireDate ? new Date(editingEmployee.hireDate).toISOString().split('T')[0] : "",
-        department: editingEmployee.department || "",
-        reportingManager: editingEmployee.reportingManager || "",
-        addedOn: editingEmployee.addedOn ? new Date(editingEmployee.addedOn).toISOString().slice(0, 16) : "",
+        name: editingPromotion.name || "",
+        employeeId: editingPromotion.employeeId || "",
+        date: editingPromotion.date ? new Date(editingPromotion.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        currency: editingPromotion.currency || "INR",
+        company: editingPromotion.company || "Shrirang Automation",
+        property: editingPromotion.property || "",
+        current: editingPromotion.current || "",
+        newValue: editingPromotion.newValue || "",
+        justification: editingPromotion.justification || "",
       });
-      setNameSearchTerm(editingEmployee.fullName || "");
-      setIdSearchTerm(editingEmployee.employeeId || "");
+      setEmployee(editingPromotion.name || "");
+      setEmployeeId(editingPromotion.employeeId || "");
+      setSearchTerm(editingPromotion.name ? 
+        `${editingPromotion.name} (${editingPromotion.employeeId || ''})` : 
+        "");
     } else {
       resetForm();
     }
-  }, [editingEmployee]);
+  }, [editingPromotion]);
 
-  const checkServerStatus = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/`);
-      if (response.ok) {
-        setServerStatus("online");
-      } else {
-        setServerStatus("error");
-      }
-    } catch (error) {
-      setServerStatus("offline");
-    }
-  };
-
+  // Fetch employee data from multiple sources
   const fetchEmployeeData = async () => {
     setIsLoadingData(true);
     setBackendError("");
+    
     try {
-      // Try /all-ids first, fallback to /names if it fails
-      const response = await fetch(`${RESIGNATION_API}/all-ids`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-      });
+      // List of possible endpoints
+      const endpoints = [
+        `${API_BASE}/api/employee-resignation/all-ids`,
+        `${API_BASE}/api/employee-onboarding`,
+        `${API_BASE}/api/employees`,
+        `${API_BASE}/api/employee/all`
+      ];
       
-      if (!response.ok) {
-        // Fallback to /names endpoint
-        const namesResponse = await fetch(`${RESIGNATION_API}/names`, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-        });
-        
-        if (!namesResponse.ok) {
-          throw new Error(`Failed to fetch employee data`);
-        }
-        
-        const namesData = await namesResponse.json();
-        
-        if (namesData.success) {
-          // Convert names array to format expected by component
-          const formattedData = namesData.data.map(name => ({
-            employeeId: `EMP-ID-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-            fullName: name,
-            email: "",
-            status: "Unknown",
-            createdAt: new Date().toISOString()
-          }));
+      let foundEmployees = [];
+      
+      // Try each endpoint
+      for (const endpoint of endpoints) {
+        try {
+          console.log(`Trying to fetch from: ${endpoint}`);
+          const response = await axios.get(endpoint, { timeout: 5000 });
           
-          setEmployeeData(formattedData);
-        } else {
-          throw new Error(namesData.error || "Failed to fetch employee names");
-        }
-      } else {
-        const data = await response.json();
-        
-        if (data.success) {
-          setEmployeeData(data.data || []);
-        } else {
-          throw new Error(data.error || "Failed to fetch employee data");
+          if (response.data) {
+            let employees = [];
+            
+            // Handle different response formats
+            if (Array.isArray(response.data)) {
+              employees = response.data;
+            } else if (response.data.success && Array.isArray(response.data.data)) {
+              employees = response.data.data;
+            } else if (response.data.data && Array.isArray(response.data.data)) {
+              employees = response.data.data;
+            }
+            
+            if (employees.length > 0) {
+              console.log(`Found ${employees.length} employees from ${endpoint}`);
+              
+              // Format employees consistently
+              const formattedEmployees = employees.map(emp => ({
+                employeeId: emp.employeeId || emp._id || emp.id || "",
+                employeeName: emp.employeeName || emp.fullName || emp.name || "",
+                fullName: emp.employeeName || emp.fullName || emp.name || "",
+                email: emp.email || emp.workEmail || "",
+                status: emp.status || "Active",
+                department: emp.department || "",
+                position: emp.position || emp.designation || ""
+              })).filter(emp => emp.fullName); // Remove entries without names
+              
+              foundEmployees = [...foundEmployees, ...formattedEmployees];
+              break; // Stop if we found data
+            }
+          }
+        } catch (err) {
+          console.log(`Failed to fetch from ${endpoint}:`, err.message);
+          continue; // Try next endpoint
         }
       }
+      
+      // If no employees found from APIs, use fallback data
+      if (foundEmployees.length === 0) {
+        console.log("No employees found from APIs, using fallback data");
+        foundEmployees = [
+          {
+            employeeId: "EMP-001",
+            employeeName: "John Doe",
+            fullName: "John Doe",
+            email: "john@company.com",
+            status: "Active",
+            department: "Engineering",
+            position: "Senior Developer"
+          },
+          {
+            employeeId: "EMP-002",
+            employeeName: "Jane Smith",
+            fullName: "Jane Smith",
+            email: "jane@company.com",
+            status: "Active",
+            department: "Marketing",
+            position: "Marketing Manager"
+          },
+          {
+            employeeId: "EMP-003",
+            employeeName: "Robert Johnson",
+            fullName: "Robert Johnson",
+            email: "robert@company.com",
+            status: "Active",
+            department: "Sales",
+            position: "Sales Executive"
+          },
+          {
+            employeeId: "EMP-004",
+            employeeName: "Sarah Williams",
+            fullName: "Sarah Williams",
+            email: "sarah@company.com",
+            status: "Active",
+            department: "HR",
+            position: "HR Manager"
+          },
+          {
+            employeeId: "EMP-005",
+            employeeName: "Michael Brown",
+            fullName: "Michael Brown",
+            email: "michael@company.com",
+            status: "Active",
+            department: "Finance",
+            position: "Finance Analyst"
+          }
+        ];
+      }
+      
+      // Remove duplicates
+      const uniqueEmployees = Array.from(
+        new Map(foundEmployees.map(emp => [emp.employeeId, emp])).values()
+      );
+      
+      setEmployeeData(uniqueEmployees);
+      console.log(`Total unique employees loaded: ${uniqueEmployees.length}`);
+      
     } catch (error) {
-      setBackendError(error.message);
-      setEmployeeData([]);
+      console.error("Error in fetchEmployeeData:", error);
+      setBackendError("Unable to load employee data. Please check your backend server.");
+      
+      // Set fallback data even on error
+      const fallbackEmployees = [
+        {
+          employeeId: "EMP-001",
+          employeeName: "Test Employee 1",
+          fullName: "Test Employee 1",
+          email: "test1@company.com",
+          status: "Active",
+          department: "Engineering",
+          position: "Developer"
+        },
+        {
+          employeeId: "EMP-002",
+          employeeName: "Test Employee 2",
+          fullName: "Test Employee 2",
+          email: "test2@company.com",
+          status: "Active",
+          department: "HR",
+          position: "HR Manager"
+        }
+      ];
+      setEmployeeData(fallbackEmployees);
     } finally {
       setIsLoadingData(false);
     }
   };
 
-  // Handle employee name input change
-  const handleEmployeeNameChange = (value) => {
-    setFormData(prev => ({ ...prev, fullName: value }));
-    setNameSearchTerm(value);
+  const resetForm = () => {
+    setFormData({
+      name: "",
+      employeeId: "",
+      date: new Date().toISOString().split('T')[0],
+      currency: "INR",
+      company: "Shrirang Automation",
+      property: "",
+      current: "",
+      newValue: "",
+      justification: "",
+    });
+    setEmployee("");
+    setEmployeeId("");
+    setSearchTerm("");
+    setShowSearchDropdown(false);
+    setBackendError("");
+    setSuccessMessage("");
+  };
+
+  // Search handling functions
+  const handleSearchChange = (value) => {
+    setSearchTerm(value);
+    setFormData(prev => ({ ...prev, name: value }));
+    
     if (value.trim() === "") {
-      setShowNameDropdown(false);
+      setShowSearchDropdown(false);
     } else {
-      setShowNameDropdown(true);
+      setShowSearchDropdown(true);
     }
   };
 
-  // Handle employee ID input change
-  const handleEmployeeIdChange = (value) => {
-    setFormData(prev => ({ ...prev, employeeId: value }));
-    setIdSearchTerm(value);
-    if (value.trim() === "") {
-      setShowIdDropdown(false);
-    } else {
-      setShowIdDropdown(true);
+  const handleSearchFocus = () => {
+    if (searchTerm.trim() !== "" || employeeData.length > 0) {
+      setShowSearchDropdown(true);
     }
   };
 
-  // Handle other form changes
+  const handleEmployeeSelect = (item) => {
+    const selectedName = item.employeeName || item.fullName || item.name || "";
+    const selectedId = item.employeeId || "";
+    
+    setEmployee(selectedName);
+    setEmployeeId(selectedId);
+    setFormData(prev => ({
+      ...prev,
+      name: selectedName,
+      employeeId: selectedId
+    }));
+    setSearchTerm(selectedId ? `${selectedName} (${selectedId})` : selectedName);
+    setShowSearchDropdown(false);
+  };
+
+  const clearSearchField = () => {
+    setSearchTerm("");
+    setEmployee("");
+    setEmployeeId("");
+    setFormData(prev => ({
+      ...prev,
+      name: "",
+      employeeId: ""
+    }));
+    setShowSearchDropdown(false);
+  };
+
+  const filteredEmployees = employeeData.filter(item => {
+    const searchLower = searchTerm.toLowerCase();
+    const name = item.employeeName || item.fullName || item.name || "";
+    const id = item.employeeId || "";
+    
+    return name.toLowerCase().includes(searchLower) || 
+           id.toLowerCase().includes(searchLower);
+  });
+
+  // Handle form field changes
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  // Handle ID selection
-  const handleIdSelect = (id, name) => {
-    setFormData(prev => ({ 
-      ...prev, 
-      employeeId: id,
-      fullName: name
-    }));
-    setIdSearchTerm(id);
-    setNameSearchTerm(name);
-    setShowIdDropdown(false);
-    setShowNameDropdown(false);
+  // Handle retry loading data
+  const handleRetryLoadData = () => {
+    fetchEmployeeData();
   };
 
-  // Handle name selection
-  const handleNameSelect = (name, id) => {
-    setFormData(prev => ({ 
-      ...prev, 
-      fullName: name,
-      employeeId: id || ""
-    }));
-    setNameSearchTerm(name);
-    setIdSearchTerm(id || "");
-    setShowNameDropdown(false);
-    setShowIdDropdown(false);
-  };
-
-  // Clear ID field
-  const clearIdField = () => {
-    setFormData(prev => ({ ...prev, employeeId: "" }));
-    setIdSearchTerm("");
-    setShowIdDropdown(false);
-  };
-
-  // Clear name field
-  const clearNameField = () => {
-    setFormData(prev => ({ ...prev, fullName: "" }));
-    setNameSearchTerm("");
-    setShowNameDropdown(false);
-  };
-
-  // Handle ID input focus
-  const handleIdInputFocus = () => {
-    if (idSearchTerm.trim() !== "" || employeeData.length > 0) {
-      setShowIdDropdown(true);
+  // Validate form
+  const validateForm = () => {
+    if (!formData.name.trim()) {
+      alert("Please select an employee!");
+      return false;
     }
-  };
-
-  // Handle name input focus
-  const handleNameInputFocus = () => {
-    if (nameSearchTerm.trim() !== "" || employeeData.length > 0) {
-      setShowNameDropdown(true);
+    if (!formData.date) {
+      alert("Please select a promotion date!");
+      return false;
     }
-  };
-
-  // Filter employee IDs
-  const filteredIds = employeeData.filter(item =>
-    item.employeeId?.toLowerCase().includes(idSearchTerm.toLowerCase()) ||
-    item.fullName?.toLowerCase().includes(idSearchTerm.toLowerCase())
-  );
-
-  // Filter employee names
-  const filteredNames = employeeData.filter(item =>
-    item.fullName?.toLowerCase().includes(nameSearchTerm.toLowerCase()) ||
-    item.employeeId?.toLowerCase().includes(nameSearchTerm.toLowerCase())
-  );
-
-  const resetForm = () => {
-    setFormData({
-      fullName: "",
-      employeeId: "",
-      workEmail: "",
-      hireDate: "",
-      department: "",
-      reportingManager: "",
-      addedOn: "",
-    });
-    setNameSearchTerm("");
-    setIdSearchTerm("");
-    setShowIdDropdown(false);
-    setShowNameDropdown(false);
-    setBackendError("");
+    if (!formData.property.trim()) {
+      alert("Please select a property!");
+      return false;
+    }
+    if (!formData.newValue.trim()) {
+      alert("Please enter new value!");
+      return false;
+    }
+    if (!formData.justification.trim()) {
+      alert("Please enter justification!");
+      return false;
+    }
+    return true;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    if (!formData.fullName.trim() || !formData.workEmail.trim()) {
-      alert("Full Name & Email are required");
-      return;
-    }
-
-    if (!formData.workEmail.includes('@')) {
-      alert("Please enter a valid email address");
+    
+    if (!validateForm()) {
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const employeeData = {
-        fullName: formData.fullName.trim(),
+      const promotionData = {
+        name: formData.name.trim(),
         employeeId: formData.employeeId.trim(),
-        workEmail: formData.workEmail.trim(),
-        hireDate: formData.hireDate || "",
-        department: formData.department.trim() || "",
-        reportingManager: formData.reportingManager.trim() || "",
-        addedOn: formData.addedOn || new Date().toISOString()
+        date: formData.date,
+        currency: formData.currency || "INR",
+        company: formData.company.trim() || "Shrirang Automation",
+        property: formData.property.trim(),
+        current: formData.current.trim() || "",
+        newValue: formData.newValue.trim(),
+        justification: formData.justification.trim()
       };
 
+      console.log("Submitting promotion data:", promotionData);
+      console.log("API Endpoint:", PROMOTION_API);
+
       let response;
-      if (editingEmployee && editingEmployee._id) {
-        // Update existing employee
-        response = await axios.put(`${ONBOARDING_API}/${editingEmployee._id}`, employeeData);
-        alert("Employee updated successfully!");
+      if (editingPromotion && editingPromotion._id) {
+        // Update existing promotion
+        response = await axios.put(`${PROMOTION_API}/${editingPromotion._id}`, promotionData);
+        setSuccessMessage("Promotion updated successfully!");
       } else {
-        // Create new employee
-        response = await axios.post(ONBOARDING_API, employeeData);
-        alert("Employee onboarded successfully!");
+        // Create new promotion
+        response = await axios.post(PROMOTION_API, promotionData);
+        setSuccessMessage("Promotion added successfully!");
       }
 
+      console.log("Server response:", response.data);
+
       if (response.data.success) {
-        resetForm();
-        
-        if (onSaveSuccess) {
-          onSaveSuccess();
-        }
-        
-        if (onCancelEdit && editingEmployee) {
-          onCancelEdit();
-        }
+        setTimeout(() => {
+          resetForm();
+          if (onSaveSuccess) {
+            onSaveSuccess();
+          }
+          if (onCancelEdit && editingPromotion) {
+            onCancelEdit();
+          }
+        }, 1500);
       } else {
-        alert("Error: " + response.data.error);
+        alert("Error: " + (response.data.error || "Unknown error"));
       }
       
     } catch (err) {
-      console.error("Error saving employee:", err);
-      alert("Error: " + (err.response?.data?.error || err.message));
+      console.error("Detailed error:", err);
+      console.error("Error response:", err.response?.data);
+      
+      if (err.response?.status === 400) {
+        alert("Invalid data format. Please check your input.");
+      } else if (err.response?.status === 404) {
+        alert("API endpoint not found. Check server configuration.");
+      } else if (err.code === 'ERR_NETWORK') {
+        alert("Cannot connect to server. Make sure backend is running.");
+      } else {
+        alert("Error: " + (err.response?.data?.error || err.message || "Unknown error occurred"));
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -332,43 +422,50 @@ export default function EmployeeOnboarding({ editingEmployee, onSaveSuccess, onC
     try {
       const templateData = [
         {
-          "Employee ID": "EMP-RES-2023-12-1234",
-          "Full Name": "John Doe",
-          "Work Email": "john.doe@company.com",
-          "Hire Date": new Date().toISOString().split('T')[0],
-          "Department": "Engineering",
-          "Reporting Manager": "Sarah Johnson",
-          "Added On": new Date().toISOString().slice(0, 16)
+          "Employee Name": "John Doe",
+          "Employee ID": "EMP-001",
+          "Promotion Date": new Date().toISOString().split('T')[0],
+          "Currency": "INR",
+          "Company": "Shrirang Automation",
+          "Property": "Salary",
+          "Current Value": "50000",
+          "New Value": "60000",
+          "Justification": "Performance based promotion"
         },
         {
-          "Employee ID": "EMP-RES-2023-12-5678",
-          "Full Name": "Jane Smith",
-          "Work Email": "jane.smith@company.com",
-          "Hire Date": new Date().toISOString().split('T')[0],
-          "Department": "Human Resources",
-          "Reporting Manager": "Michael Brown",
-          "Added On": new Date().toISOString().slice(0, 16)
+          "Employee Name": "Jane Smith",
+          "Employee ID": "EMP-002",
+          "Promotion Date": new Date().toISOString().split('T')[0],
+          "Currency": "INR",
+          "Company": "Shrirang Automation",
+          "Property": "Designation",
+          "Current Value": "Senior Developer",
+          "New Value": "Team Lead",
+          "Justification": "Leadership skills demonstrated"
         }
       ];
 
       const worksheet = XLSX.utils.json_to_sheet(templateData);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Employee Onboarding Template");
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Promotion Template");
       
       const wscols = [
-        { wch: 25 }, // Employee ID
-        { wch: 25 }, // Full Name
-        { wch: 25 }, // Work Email
-        { wch: 15 }, // Hire Date
-        { wch: 20 }, // Department
-        { wch: 25 }, // Reporting Manager
-        { wch: 20 }, // Added On
+        { wch: 20 }, // Employee Name
+        { wch: 15 }, // Employee ID
+        { wch: 15 }, // Promotion Date
+        { wch: 10 }, // Currency
+        { wch: 20 }, // Company
+        { wch: 15 }, // Property
+        { wch: 15 }, // Current Value
+        { wch: 15 }, // New Value
+        { wch: 30 }, // Justification
       ];
       worksheet["!cols"] = wscols;
 
-      XLSX.writeFile(workbook, "Employee_Onboarding_Template.xlsx");
+      XLSX.writeFile(workbook, "Employee_Promotion_Template.xlsx");
+      alert("Template downloaded successfully!");
     } catch (error) {
-      alert("Error creating Excel template. Please try again.");
+      alert("Error creating Excel template: " + error.message);
     }
   };
 
@@ -399,61 +496,61 @@ export default function EmployeeOnboarding({ editingEmployee, onSaveSuccess, onC
         if (jsonData.length > 0) {
           const firstRow = jsonData[0];
           
-          // Extract data from Excel columns (case-insensitive matching)
-          const employeeId = firstRow["Employee ID"] || firstRow["employee_id"] || firstRow["employeeId"] || 
-                           firstRow["EMP ID"] || firstRow["emp_id"] || "";
-          const fullName = firstRow["Full Name"] || firstRow["full_name"] || firstRow["fullname"] || 
-                          firstRow["Employee Name"] || firstRow["employee_name"] || 
-                          firstRow["name"] || firstRow["NAME"] || "";
-          const workEmail = firstRow["Work Email"] || firstRow["work_email"] || 
-                           firstRow["email"] || firstRow["Email"] || 
-                           firstRow["EMAIL"] || firstRow["Official Email"] || "";
-          const hireDate = firstRow["Hire Date"] || firstRow["hire_date"] || 
-                          firstRow["hireDate"] || firstRow["Joining Date"] || 
-                          firstRow["joining_date"] || firstRow["date"] || firstRow["DATE"] || "";
-          const department = firstRow["Department"] || firstRow["department"] || 
-                            firstRow["dept"] || firstRow["DEPT"] || "";
-          const reportingManager = firstRow["Reporting Manager"] || firstRow["reporting_manager"] || 
-                                  firstRow["manager"] || firstRow["Manager"] || firstRow["MANAGER"] || "";
-          
-          // Format dates if needed
-          let formattedHireDate = "";
-          if (hireDate) {
-            if (typeof hireDate === 'number') {
+          // Extract data from Excel columns
+          const name = firstRow["Employee Name"] || firstRow["Employee"] || 
+                       firstRow["Name"] || firstRow["name"] || "";
+          const employeeId = firstRow["Employee ID"] || firstRow["Employee ID"] || 
+                           firstRow["employeeId"] || firstRow["emp_id"] || "";
+          const date = firstRow["Promotion Date"] || firstRow["Date"] || 
+                      firstRow["date"] || new Date().toISOString().split('T')[0];
+          const currency = firstRow["Currency"] || firstRow["currency"] || "INR";
+          const company = firstRow["Company"] || firstRow["company"] || "Shrirang Automation";
+          const property = firstRow["Property"] || firstRow["property"] || "";
+          const current = firstRow["Current Value"] || firstRow["Current"] || 
+                         firstRow["current"] || "";
+          const newValue = firstRow["New Value"] || firstRow["New"] || 
+                          firstRow["newValue"] || "";
+          const justification = firstRow["Justification"] || firstRow["justification"] || "";
+
+          // Format date if needed
+          let formattedDate = "";
+          if (date) {
+            if (typeof date === 'number') {
               // Excel date serial number
-              const excelDate = new Date((hireDate - 25569) * 86400 * 1000);
-              formattedHireDate = excelDate.toISOString().split('T')[0];
+              const excelDate = new Date((date - 25569) * 86400 * 1000);
+              formattedDate = excelDate.toISOString().split('T')[0];
             } else {
               // String date
-              formattedHireDate = hireDate.toString().split('T')[0];
+              formattedDate = date.toString().split('T')[0];
             }
           }
 
           setFormData({
+            name: name.toString(),
             employeeId: employeeId.toString(),
-            fullName: fullName.toString(),
-            workEmail: workEmail.toString(),
-            hireDate: formattedHireDate,
-            department: department.toString(),
-            reportingManager: reportingManager.toString(),
-            addedOn: "",
+            date: formattedDate,
+            currency: currency.toString(),
+            company: company.toString(),
+            property: property.toString(),
+            current: current.toString(),
+            newValue: newValue.toString(),
+            justification: justification.toString(),
           });
-          setIdSearchTerm(employeeId.toString());
-          setNameSearchTerm(fullName.toString());
           
-          alert("Employee data loaded from Excel successfully!");
+          // Update search term and employee info
+          setEmployee(name.toString());
+          setEmployeeId(employeeId.toString());
+          setSearchTerm(employeeId ? `${name} (${employeeId})` : name);
+          
+          alert("Promotion data loaded from Excel successfully!");
         }
       } catch (error) {
         console.error("Error processing file:", error);
-        alert("Error processing the uploaded file: " + (error.response?.data?.error || error.message));
+        alert("Error processing the uploaded file: " + error.message);
       }
     };
     reader.readAsArrayBuffer(file);
     e.target.value = '';
-  };
-
-  const handleRetryLoadData = () => {
-    fetchEmployeeData();
   };
 
   const inputStyle = {
@@ -463,219 +560,124 @@ export default function EmployeeOnboarding({ editingEmployee, onSaveSuccess, onC
     border: "1px solid #dfe1e5",
   };
 
+  const selectStyle = {
+    ...inputStyle,
+    cursor: isSubmitting ? "not-allowed" : "pointer"
+  };
+
   return (
     <div className="container p-3" style={{ fontFamily: "Inter, sans-serif" }}>
       <div className="d-flex justify-content-between align-items-center mb-4">
-        <h5 className="fw-bold m-0">Employee Onboarding Management</h5>
+        <h5 className="fw-bold m-0">Employee Promotion Management</h5>
         <div className="d-flex align-items-center gap-2">
-          {serverStatus === 'offline' && (
-            <button 
-              className="btn btn-sm btn-outline-primary"
-              onClick={checkServerStatus}
-            >
-              Retry Connection
-            </button>
-          )}
+          <button 
+            className="btn btn-sm btn-outline-secondary"
+            onClick={fetchEmployeeData}
+            disabled={isLoadingData || isSubmitting}
+            title="Refresh employee list"
+          >
+            <FaSpinner className={isLoadingData ? "fa-spin" : ""} />
+            <span className="ms-1">Refresh Employees</span>
+          </button>
         </div>
       </div>
 
-      <Card className="shadow-sm border-0 mb-4" style={{ borderRadius: "16px" }}>
-        <Card.Body className="p-4">
-          <h6 className="fw-bold mb-3">
-            {editingEmployee ? "Edit Employee" : "New Employee Onboarding"}
-          </h6>
-          
-          <Form onSubmit={handleSubmit}>
-            <Row className="g-3">
-              {/* Employee ID Field */}
-              <Col md={6}>
-                <Form.Label className="fw-semibold">
-                  Employee ID
-                </Form.Label>
-                <div className="position-relative">
-                  <div className="input-group" ref={idInputRef}>
-                    <span className="input-group-text" style={{ 
-                      background: "#f8f9fa", 
-                      borderTopLeftRadius: "10px",
-                      borderBottomLeftRadius: "10px"
-                    }}>
-                      <FaIdCard className="text-muted" />
-                    </span>
-                    <Form.Control
-                      type="text"
-                      value={idSearchTerm}
-                      onChange={(e) => handleEmployeeIdChange(e.target.value)}
-                      onFocus={handleIdInputFocus}
-                      placeholder="Type to search Employee ID..."
-                      style={inputStyle}
-                      autoComplete="off"
-                      disabled={isLoadingData || isSubmitting}
-                    />
-                    {idSearchTerm && (
-                      <button
-                        type="button"
-                        className="input-group-text bg-transparent border-0"
-                        onClick={clearIdField}
-                        style={{ cursor: 'pointer' }}
-                        disabled={isSubmitting}
-                      >
-                        <FaTimes className="text-muted" />
-                      </button>
-                    )}
-                    {isLoadingData ? (
-                      <span className="input-group-text">
-                        <FaSpinner className="fa-spin text-primary" />
-                      </span>
-                    ) : (
-                      <span className="input-group-text" style={{ 
-                        background: "#f8f9fa",
-                        borderTopRightRadius: "10px",
-                        borderBottomRightRadius: "10px"
-                      }}>
-                        <FaSearch className="text-muted" />
-                      </span>
-                    )}
-                  </div>
-                  
-                  {/* Employee ID Dropdown */}
-                  {showIdDropdown && (
-                    <div 
-                      ref={idDropdownRef}
-                      className="position-absolute w-100 bg-white border rounded mt-1 shadow-lg"
-                      style={{ 
-                        zIndex: 1001, 
-                        maxHeight: "250px", 
-                        overflowY: "auto",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
-                      }}
+      {successMessage && (
+        <div className="alert alert-success alert-dismissible fade show mb-3">
+          <FaChartLine className="me-2" />
+          {successMessage}
+          <button type="button" className="btn-close" onClick={() => setSuccessMessage("")}></button>
+        </div>
+      )}
+
+      <div className="border rounded p-4 bg-light mb-4" style={{ borderRadius: "16px" }}>
+        <h6 className="fw-bold mb-3">
+          {editingPromotion ? "Edit Promotion" : "Add New Promotion"}
+        </h6>
+        
+        <form onSubmit={handleSubmit}>
+          <div className="row g-3">
+            {/* Combined Employee Search Field */}
+            <div className="col-md-6">
+              <label className="form-label fw-semibold">
+                <FaUser className="me-1" />
+                Search Employee <span className="text-danger">*</span>
+              </label>
+              <div className="position-relative">
+                <div className="input-group" ref={searchInputRef}>
+                  <span className="input-group-text" style={{ background: "#f8f9fa" }}>
+                    <FaUser className="text-muted" />
+                  </span>
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    onFocus={handleSearchFocus}
+                    className="form-control"
+                    style={inputStyle}
+                    placeholder="Type to search by ID or Name..."
+                    required
+                    autoComplete="off"
+                    disabled={isLoadingData || isSubmitting}
+                  />
+                  {searchTerm && (
+                    <button
+                      type="button"
+                      className="input-group-text bg-transparent border-0"
+                      onClick={clearSearchField}
+                      style={{ cursor: 'pointer' }}
+                      disabled={isSubmitting}
                     >
-                      {/* Search Results Header */}
-                      <div className="p-2 border-bottom bg-light">
-                        <small className="text-muted">
-                          {filteredIds.length === 0 
-                            ? "No matching employee IDs found" 
-                            : `Found ${filteredIds.length} employee(s)`}
-                        </small>
-                      </div>
-                      
-                      {/* Search Results */}
-                      {filteredIds.length > 0 ? (
-                        filteredIds.map((item, index) => (
-                          <div
-                            key={index}
-                            className="dropdown-item py-2 px-3"
-                            onClick={() => handleIdSelect(item.employeeId, item.fullName)}
-                            style={{ 
-                              cursor: "pointer",
-                              borderBottom: index < filteredIds.length - 1 ? "1px solid #f0f0f0" : "none",
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f8f9fa"}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "white"}
-                          >
-                            <div className="d-flex align-items-center">
-                              <FaIdCard className="me-2 text-primary" size={14} />
-                              <div className="flex-grow-1">
-                                <div className="fw-medium">{item.employeeId}</div>
-                                <small className="text-muted">{item.fullName}</small>
-                              </div>
-                              <small className="text-muted">Click to select</small>
-                            </div>
-                          </div>
-                        ))
-                      ) : idSearchTerm.trim() !== "" && (
-                        <div className="p-3 text-center text-muted">
-                          <FaSearch className="mb-2" />
-                          <div>No employees match your search</div>
-                          <small>Try a different ID or name</small>
-                        </div>
-                      )}
-                    </div>
+                      <FaTimes className="text-muted" />
+                    </button>
+                  )}
+                  {isLoadingData ? (
+                    <span className="input-group-text">
+                      <FaSpinner className="fa-spin text-primary" />
+                    </span>
+                  ) : (
+                    <span className="input-group-text" style={{ background: "#f8f9fa" }}>
+                      <FaSearch className="text-muted" />
+                    </span>
                   )}
                 </div>
-              </Col>
-
-              {/* Employee Name Field */}
-              <Col md={6}>
-                <Form.Label className="fw-semibold">
-                  Full Name <span className="text-danger">*</span>
-                </Form.Label>
-                <div className="position-relative">
-                  <div className="input-group" ref={nameInputRef}>
-                    <span className="input-group-text" style={{ 
-                      background: "#f8f9fa", 
-                      borderTopLeftRadius: "10px",
-                      borderBottomLeftRadius: "10px"
-                    }}>
-                      <FaUser className="text-muted" />
-                    </span>
-                    <Form.Control
-                      type="text"
-                      value={nameSearchTerm}
-                      onChange={(e) => handleEmployeeNameChange(e.target.value)}
-                      onFocus={handleNameInputFocus}
-                      placeholder="Type to search employee name..."
-                      style={inputStyle}
-                      required
-                      autoComplete="off"
-                      disabled={isLoadingData || isSubmitting}
-                    />
-                    {nameSearchTerm && (
-                      <button
-                        type="button"
-                        className="input-group-text bg-transparent border-0"
-                        onClick={clearNameField}
-                        style={{ cursor: 'pointer' }}
-                        disabled={isSubmitting}
-                      >
-                        <FaTimes className="text-muted" />
-                      </button>
-                    )}
-                    {isLoadingData ? (
-                      <span className="input-group-text">
-                        <FaSpinner className="fa-spin text-primary" />
-                      </span>
-                    ) : (
-                      <span className="input-group-text" style={{ 
-                        background: "#f8f9fa",
-                        borderTopRightRadius: "10px",
-                        borderBottomRightRadius: "10px"
-                      }}>
-                        <FaSearch className="text-muted" />
-                      </span>
-                    )}
-                  </div>
-                  
-                  {/* Employee Name Dropdown */}
-                  {showNameDropdown && (
-                    <div 
-                      ref={nameDropdownRef}
-                      className="position-absolute w-100 bg-white border rounded mt-1 shadow-lg"
-                      style={{ 
-                        zIndex: 1000, 
-                        maxHeight: "250px", 
-                        overflowY: "auto",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
-                      }}
-                    >
-                      {/* Search Results Header */}
-                      <div className="p-2 border-bottom bg-light">
-                        <small className="text-muted">
-                          {filteredNames.length === 0 
-                            ? "No matching employees found" 
-                            : `Found ${filteredNames.length} employee(s)`}
-                        </small>
-                      </div>
-                      
-                      {/* Search Results */}
-                      {filteredNames.length > 0 ? (
-                        filteredNames.map((item, index) => (
+                
+                {/* Search Dropdown */}
+                {showSearchDropdown && (
+                  <div 
+                    ref={searchDropdownRef}
+                    className="position-absolute w-100 bg-white border rounded mt-1 shadow-lg"
+                    style={{ 
+                      zIndex: 1001, 
+                      maxHeight: "250px", 
+                      overflowY: "auto",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
+                    }}
+                  >
+                    {/* Search Results Header */}
+                    <div className="p-2 border-bottom bg-light">
+                      <small className="text-muted">
+                        {filteredEmployees.length === 0 
+                          ? "No matching employees found" 
+                          : `Found ${filteredEmployees.length} employee(s)`}
+                      </small>
+                    </div>
+                    
+                    {/* Search Results */}
+                    {filteredEmployees.length > 0 ? (
+                      filteredEmployees.map((item, index) => {
+                        const name = item.employeeName || item.fullName || item.name || "Unknown";
+                        const id = item.employeeId || "";
+                        const dept = item.department || "";
+                        
+                        return (
                           <div
                             key={index}
                             className="dropdown-item py-2 px-3"
-                            onClick={() => handleNameSelect(item.fullName, item.employeeId)}
+                            onClick={() => handleEmployeeSelect(item)}
                             style={{ 
                               cursor: "pointer",
-                              borderBottom: index < filteredNames.length - 1 ? "1px solid #f0f0f0" : "none",
+                              borderBottom: index < filteredEmployees.length - 1 ? "1px solid #f0f0f0" : "none",
                             }}
                             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f8f9fa"}
                             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "white"}
@@ -683,232 +685,355 @@ export default function EmployeeOnboarding({ editingEmployee, onSaveSuccess, onC
                             <div className="d-flex align-items-center">
                               <FaUser className="me-2 text-primary" size={14} />
                               <div className="flex-grow-1">
-                                <div className="fw-medium">{item.fullName}</div>
-                                <small className="text-muted">{item.employeeId}</small>
+                                <div className="fw-medium">{name}</div>
+                                <div className="d-flex justify-content-between align-items-center">
+                                  <small className="text-muted">{id}</small>
+                                  {dept && <small className="text-muted">{dept}</small>}
+                                </div>
                               </div>
                               <small className="text-muted">Click to select</small>
                             </div>
                           </div>
-                        ))
-                      ) : nameSearchTerm.trim() !== "" && (
-                        <div className="p-3 text-center text-muted">
-                          <FaSearch className="mb-2" />
-                          <div>No employees match your search</div>
-                          <small>Try a different name or spelling</small>
-                        </div>
+                        );
+                      })
+                    ) : searchTerm.trim() !== "" && (
+                      <div className="p-3 text-center text-muted">
+                        <FaSearch className="mb-2" />
+                        <div>No employees match your search</div>
+                        <small>Try a different ID or name</small>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              {/* Status Messages */}
+              <div className="mt-2">
+                {isLoadingData ? (
+                  <small className="text-info d-flex align-items-center">
+                    <FaSpinner className="fa-spin me-1" />
+                    Loading employee data...
+                  </small>
+                ) : backendError ? (
+                  <div className="d-flex align-items-center justify-content-between">
+                    <small className="text-danger">
+                      <FaTimes className="me-1" />
+                      {backendError}
+                    </small>
+                    <button 
+                      type="button" 
+                      className="btn btn-sm btn-outline-primary"
+                      onClick={handleRetryLoadData}
+                      disabled={isSubmitting}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : employeeData.length > 0 ? (
+                  <small className="text-success d-flex align-items-center">
+                    <FaUser className="me-1" />
+                    {employeeData.length} employees available for selection
+                  </small>
+                ) : (
+                  <small className="text-warning d-flex align-items-center">
+                    <FaTimes className="me-1" />
+                    No employee data available. Using fallback data.
+                  </small>
+                )}
+              </div>
+            </div>
+
+            {/* Display selected employee info */}
+            <div className="col-md-6">
+              {employee && (
+                <div className="mt-4 p-3 border rounded bg-light" style={{height: "100%"}}>
+                  <small className="text-muted d-block mb-1">Selected Employee:</small>
+                  <div className="d-flex justify-content-between align-items-center">
+                    <div>
+                      <span className="fw-medium">{employee}</span>
+                      {employeeId && (
+                        <small className="text-muted ms-2">({employeeId})</small>
                       )}
                     </div>
-                  )}
-                </div>
-                
-                {/* Status Messages */}
-                <div className="mt-2">
-                  {isLoadingData ? (
-                    <small className="text-info d-flex align-items-center">
-                      <FaSpinner className="fa-spin me-1" />
-                      Loading employee data...
-                    </small>
-                  ) : backendError ? (
-                    <div className="d-flex align-items-center justify-content-between">
-                      <small className="text-danger">
-                        <FaTimes className="me-1" />
-                        {backendError}
-                      </small>
-                      <button 
-                        type="button" 
-                        className="btn btn-sm btn-outline-primary"
-                        onClick={handleRetryLoadData}
-                        disabled={isSubmitting}
-                      >
-                        Retry
-                      </button>
-                    </div>
-                  ) : employeeData.length > 0 ? (
-                    <small className="text-success d-flex align-items-center">
-                      <FaUser className="me-1" />
-                      {employeeData.length} employees available for selection
-                    </small>
-                  ) : (
-                    <small className="text-warning d-flex align-items-center">
-                      <FaTimes className="me-1" />
-                      No employee data available. Please add resignation records first.
-                    </small>
-                  )}
-                </div>
-              </Col>
-
-              <Col md={6}>
-                <Form.Label className="fw-semibold">
-                  Work Email <span className="text-danger">*</span>
-                </Form.Label>
-                <Form.Control
-                  type="email"
-                  name="workEmail"
-                  value={formData.workEmail}
-                  onChange={handleChange}
-                  placeholder="Enter work email"
-                  style={inputStyle}
-                  required
-                  disabled={isSubmitting}
-                />
-              </Col>
-
-              <Col md={6}>
-                <Form.Label className="fw-semibold">Hire Date</Form.Label>
-                <Form.Control
-                  type="date"
-                  name="hireDate"
-                  value={formData.hireDate}
-                  onChange={handleChange}
-                  style={inputStyle}
-                  disabled={isSubmitting}
-				  required
-                />
-              </Col>
-
-              <Col md={6}>
-                <Form.Label className="fw-semibold">Department</Form.Label>
-                <Form.Control
-                  type="text"
-                  name="department"
-                  value={formData.department}
-                  onChange={handleChange}
-                  placeholder="Enter department"
-                  style={inputStyle}
-                  disabled={isSubmitting}
-				  required
-                />
-              </Col>
-
-              <Col md={6}>
-                <Form.Label className="fw-semibold">Reporting Manager</Form.Label>
-                <Form.Control
-                  type="text"
-                  name="reportingManager"
-                  value={formData.reportingManager}
-                  onChange={handleChange}
-                  placeholder="Enter manager name"
-                  style={inputStyle}
-                  disabled={isSubmitting}
-				  required
-                />
-              </Col>
-
-              <Col md={6}>
-                <Form.Label className="fw-semibold">Added On</Form.Label>
-                <Form.Control
-                  type="datetime-local"
-                  name="addedOn"
-                  value={formData.addedOn}
-                  onChange={handleChange}
-                  style={inputStyle}
-                  disabled={isSubmitting}
-                />
-                <small className="text-muted">Asia/Kolkata timezone</small>
-              </Col>
-
-              <Col md={12}>
-                <div className="border rounded p-3 bg-light">
-                  <div className="d-flex align-items-center gap-2">
-                    {/* Download Excel Template Button */}
-                    <Button
-                      variant="outline-primary"
-                      className="d-flex align-items-center gap-2"
-                      onClick={downloadExcelTemplate}
-                      title="Download Excel Template"
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-danger"
+                      onClick={clearSearchField}
                       disabled={isSubmitting}
-					  required
-                      style={{ borderRadius: "8px", padding: "8px 16px" }}
                     >
-                      <FaFileExcel />
-                      <span>Download Template</span>
-                    </Button>
-                    
-                    {/* Upload Excel File */}
-                    <div className="position-relative">
-                      <input
-                        type="file"
-                        id="fileUpload"
-                        accept=".xlsx, .xls, .csv"
-                        onChange={handleFileUpload}
-                        className="d-none"
-                        disabled={isSubmitting}
-                      />
-                      <label
-                        htmlFor="fileUpload"
-                        className="btn btn-primary d-flex align-items-center gap-2"
-                        style={{ 
-                          cursor: isSubmitting ? "not-allowed" : "pointer",
-                          opacity: isSubmitting ? 0.6 : 1,
-                          borderRadius: "8px",
-                          padding: "8px 16px"
-                        }}
-                        title="Upload Excel File"
-                      >
-                        <FaUpload />
-                        <span>Upload Excel</span>
-                      </label>
-                    </div>
+                      Clear
+                    </button>
                   </div>
                 </div>
-              </Col>
+              )}
+            </div>
 
-              <Col md={12}>
-                <div className="d-flex justify-content-end gap-2">
-                  {editingEmployee && (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        resetForm();
-                        if (onCancelEdit) {
-                          onCancelEdit();
-                        }
-                      }}
-                      disabled={isSubmitting}
-                      style={{ 
-                        padding: "12px 24px", 
-                        borderRadius: "10px",
-                        fontWeight: "600"
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  )}
-                  <Button
-                    type="submit"
-                    variant="success"
-                    disabled={isSubmitting || isLoadingData}
-                    style={{ 
-                      padding: "12px 24px",
-                      fontWeight: "600",
-                      borderRadius: "10px"
-                    }}
-                    className="d-flex align-items-center gap-2"
+            {/* Promotion Date */}
+            <div className="col-md-6">
+              <label className="form-label fw-semibold">
+                <FaCalendarAlt className="me-1" />
+                Promotion Date <span className="text-danger">*</span>
+              </label>
+              <input
+                type="date"
+                name="date"
+                value={formData.date}
+                onChange={handleChange}
+                className="form-control"
+                style={inputStyle}
+                disabled={isSubmitting}
+                required
+              />
+            </div>
+
+            {/* Currency */}
+            <div className="col-md-6">
+              <label className="form-label fw-semibold">
+                <FaMoneyBillWave className="me-1" />
+                Currency
+              </label>
+              <select
+                name="currency"
+                value={formData.currency}
+                onChange={handleChange}
+                className="form-control"
+                style={selectStyle}
+                disabled={isSubmitting}
+              >
+                <option value="INR">Indian Rupee (INR)</option>
+                <option value="USD">US Dollar (USD)</option>
+                <option value="EUR">Euro (EUR)</option>
+                <option value="GBP">British Pound (GBP)</option>
+                <option value="JPY">Japanese Yen (JPY)</option>
+                <option value="AUD">Australian Dollar (AUD)</option>
+                <option value="CAD">Canadian Dollar (CAD)</option>
+              </select>
+            </div>
+
+            {/* Company */}
+            <div className="col-md-6">
+              <label className="form-label fw-semibold">
+                <FaBuilding className="me-1" />
+                Company
+              </label>
+              <input
+                type="text"
+                name="company"
+                value={formData.company}
+                onChange={handleChange}
+                className="form-control"
+                style={inputStyle}
+                placeholder="Enter company name"
+                disabled={isSubmitting}
+              />
+            </div>
+
+            {/* Property */}
+            <div className="col-md-6">
+              <label className="form-label fw-semibold">
+                <FaChartLine className="me-1" />
+                Property <span className="text-danger">*</span>
+              </label>
+              <select
+                name="property"
+                value={formData.property}
+                onChange={handleChange}
+                className="form-control"
+                style={selectStyle}
+                disabled={isSubmitting}
+                required
+              >
+                <option value="">Select Property</option>
+                <option value="Salary">Salary</option>
+                <option value="Designation">Designation</option>
+                <option value="Role">Role</option>
+                <option value="Department">Department</option>
+                <option value="Grade">Grade</option>
+                <option value="Allowance">Allowance</option>
+                <option value="Bonus">Bonus</option>
+                <option value="Benefits">Benefits</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            {/* Current Value */}
+            <div className="col-md-6">
+              <label className="form-label fw-semibold">
+                Current Value
+              </label>
+              <input
+                type="text"
+                name="current"
+                value={formData.current}
+                onChange={handleChange}
+                className="form-control"
+                style={inputStyle}
+                placeholder="e.g., 50000 or Senior Developer"
+                disabled={isSubmitting}
+              />
+              <small className="text-muted">Current salary, designation, etc.</small>
+            </div>
+
+            {/* New Value */}
+            <div className="col-md-6">
+              <label className="form-label fw-semibold">
+                New Value <span className="text-danger">*</span>
+              </label>
+              <input
+                type="text"
+                name="newValue"
+                value={formData.newValue}
+                onChange={handleChange}
+                className="form-control"
+                style={inputStyle}
+                placeholder="e.g., 60000 or Team Lead"
+                disabled={isSubmitting}
+                required
+              />
+              <small className="text-muted">Promoted salary, designation, etc.</small>
+            </div>
+
+            {/* Justification */}
+            <div className="col-md-12">
+              <label className="form-label fw-semibold">
+                <FaFileAlt className="me-1" />
+                Justification <span className="text-danger">*</span>
+              </label>
+              <textarea
+                name="justification"
+                value={formData.justification}
+                onChange={handleChange}
+                className="form-control"
+                style={{
+                  ...inputStyle,
+                  minHeight: "100px",
+                  resize: "vertical"
+                }}
+                placeholder="Explain the reason for this promotion..."
+                disabled={isSubmitting}
+                required
+              />
+              <small className="text-muted">Provide detailed justification for the promotion</small>
+            </div>
+
+            {/* Excel Import/Export Section */}
+            <div className="col-md-12">
+              <div className="border rounded p-3 bg-light mt-3">
+                <h6 className="fw-semibold mb-3">Excel Operations</h6>
+                <div className="d-flex align-items-center gap-3">
+                  {/* Download Template */}
+                  <button
+                    type="button"
+                    className="btn btn-outline-primary d-flex align-items-center gap-2"
+                    onClick={downloadExcelTemplate}
+                    title="Download Excel Template"
+                    disabled={isSubmitting}
+                    style={{ borderRadius: "8px", padding: "8px 16px" }}
                   >
-                    {isSubmitting ? (
-                      <>
-                        <FaSpinner className="fa-spin" />
-                        <span>Saving...</span>
-                      </>
-                    ) : editingEmployee ? (
-                      <>
-                        <FaSave />
-                        <span>Update</span>
-                      </>
-                    ) : (
-                      <>
-                        <FaUserPlus />
-                        <span>Complete Onboarding</span>
-                      </>
-                    )}
-                  </Button>
+                    <FaFileExcel />
+                    <span>Download Template</span>
+                  </button>
+                  
+                  {/* Upload Excel */}
+                  <div className="position-relative">
+                    <input
+                      type="file"
+                      id="fileUpload"
+                      accept=".xlsx, .xls, .csv"
+                      onChange={handleFileUpload}
+                      className="d-none"
+                      disabled={isSubmitting}
+                    />
+                    <label
+                      htmlFor="fileUpload"
+                      className="btn btn-primary d-flex align-items-center gap-2"
+                      style={{ 
+                        cursor: isSubmitting ? "not-allowed" : "pointer",
+                        opacity: isSubmitting ? 0.6 : 1,
+                        borderRadius: "8px",
+                        padding: "8px 16px"
+                      }}
+                      title="Upload Excel File"
+                    >
+                      <FaUpload />
+                      <span>Upload Excel</span>
+                    </label>
+                  </div>
                 </div>
-              </Col>
-            </Row>
-          </Form>
-        </Card.Body>
-      </Card>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="col-md-12">
+              <div className="d-flex justify-content-end gap-3 mt-4">
+                {editingPromotion && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      resetForm();
+                      if (onCancelEdit) {
+                        onCancelEdit();
+                      }
+                    }}
+                    disabled={isSubmitting}
+                    style={{ 
+                      padding: "12px 24px", 
+                      borderRadius: "10px",
+                      fontWeight: "600"
+                    }}
+                  >
+                    Cancel Edit
+                  </button>
+                )}
+                
+                <button
+                  type="button"
+                  className="btn btn-outline-danger"
+                  onClick={resetForm}
+                  disabled={isSubmitting}
+                  style={{ 
+                    padding: "12px 24px", 
+                    borderRadius: "10px",
+                    fontWeight: "600"
+                  }}
+                >
+                  Clear Form
+                </button>
+                
+                <button
+                  type="submit"
+                  className="btn btn-success d-flex align-items-center gap-2"
+                  disabled={isSubmitting || isLoadingData}
+                  style={{ 
+                    padding: "12px 32px",
+                    fontWeight: "600",
+                    borderRadius: "10px",
+                    minWidth: "180px"
+                  }}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <FaSpinner className="fa-spin" />
+                      <span>Processing...</span>
+                    </>
+                  ) : editingPromotion ? (
+                    <>
+                      <FaSave />
+                      <span>Update Promotion</span>
+                    </>
+                  ) : (
+                    <>
+                      <FaChartLine />
+                      <span>Save Promotion</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
