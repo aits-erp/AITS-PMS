@@ -5,14 +5,14 @@ import * as XLSX from "xlsx";
 import axios from "axios";
 
 export default function ViewEmployeeResignation({ onEditEmployee, refreshTrigger }) {
-//  const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/employee-resignation";
-   const API_BASE = `${process.env.REACT_APP_API_BASE}/api/employee-resignation`;
+  const API_BASE = `${process.env.REACT_APP_API_BASE}/api/employee-resignation`;
   const [resignations, setResignations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedRows, setSelectedRows] = useState([]);
   const [editingRowId, setEditingRowId] = useState(null);
   const [viewModal, setViewModal] = useState({ show: false, data: null });
   const [stats, setStats] = useState({ total: 0, byStatus: {} });
+  const [showCompactView, setShowCompactView] = useState(false);
   
   const [inlineEditForm, setInlineEditForm] = useState({
     fullName: "",
@@ -47,19 +47,42 @@ export default function ViewEmployeeResignation({ onEditEmployee, refreshTrigger
       setLoading(true);
       const res = await axios.get(API_BASE);
       
-      if (res.data && res.data.success) {
-        const formattedResignations = res.data.data.map(item => ({
-          ...item,
-          id: item._id,
-          addedOn: formatDisplayDate(item.addedOn),
-          birthDate: item.birthDate ? new Date(item.birthDate).toISOString().split('T')[0] : "",
-          hireDate: item.hireDate ? new Date(item.hireDate).toISOString().split('T')[0] : "",
-          lastWorkingDay: item.lastWorkingDay ? new Date(item.lastWorkingDay).toISOString().split('T')[0] : "",
-        }));
-        setResignations(formattedResignations);
-      } else {
-        setResignations([]);
+      // Handle different API response structures
+      let data = [];
+      if (res.data) {
+        if (res.data.success && Array.isArray(res.data.data)) {
+          data = res.data.data;
+        } else if (Array.isArray(res.data)) {
+          data = res.data;
+        }
       }
+      
+      const formattedResignations = data.map(item => ({
+        ...item,
+        id: item._id || item.id,
+        employeeId: item.employeeId || "",
+        fullName: item.fullName || "",
+        email: item.email || "",
+        workEmail: item.workEmail || "",
+        phone: item.phone || "",
+        emergencyContact: item.emergencyContact || "",
+        department: item.department || "",
+        reportingManager: item.reportingManager || "",
+        address: item.address || "",
+        currentAddress: item.currentAddress || "",
+        city: item.city || "",
+        state: item.state || "",
+        pincode: item.pincode || "",
+        panNo: item.panNo || "",
+        status: item.status || "Pending",
+        resignationReason: item.resignationReason || "",
+        addedOn: formatDisplayDate(item.addedOn || item.createdAt || new Date().toISOString()),
+        birthDate: item.birthDate ? new Date(item.birthDate).toISOString().split('T')[0] : "",
+        hireDate: item.hireDate ? new Date(item.hireDate).toISOString().split('T')[0] : "",
+        lastWorkingDay: item.lastWorkingDay ? new Date(item.lastWorkingDay).toISOString().split('T')[0] : "",
+      }));
+      
+      setResignations(formattedResignations);
       setSelectedRows([]);
       setEditingRowId(null);
     } catch (err) {
@@ -75,10 +98,27 @@ export default function ViewEmployeeResignation({ onEditEmployee, refreshTrigger
     try {
       const res = await axios.get(`${API_BASE}/stats`);
       if (res.data && res.data.success) {
-        setStats(res.data.data);
+        setStats(res.data.data || { total: 0, byStatus: {} });
+      } else {
+        // Calculate stats from local data if API doesn't provide
+        const total = resignations.length || 0;
+        const byStatus = {};
+        (resignations || []).forEach(item => {
+          const status = item.status || "Pending";
+          byStatus[status] = (byStatus[status] || 0) + 1;
+        });
+        setStats({ total, byStatus });
       }
     } catch (err) {
       console.error("Error loading stats:", err);
+      // Calculate stats from local data
+      const total = resignations.length || 0;
+      const byStatus = {};
+      (resignations || []).forEach(item => {
+        const status = item.status || "Pending";
+        byStatus[status] = (byStatus[status] || 0) + 1;
+      });
+      setStats({ total, byStatus });
     }
   };
 
@@ -86,6 +126,7 @@ export default function ViewEmployeeResignation({ onEditEmployee, refreshTrigger
     if (!dateString) return "";
     try {
       const d = new Date(dateString);
+      if (isNaN(d.getTime())) return dateString;
       const dd = String(d.getDate()).padStart(2, "0");
       const mm = String(d.getMonth() + 1).padStart(2, "0");
       const yy = d.getFullYear();
@@ -102,16 +143,16 @@ export default function ViewEmployeeResignation({ onEditEmployee, refreshTrigger
     
     try {
       const response = await axios.delete(`${API_BASE}/${id}`);
-      if (response.data.success) {
+      if (response.data && response.data.success) {
         alert("Resignation record deleted successfully!");
         loadResignations();
         loadStats();
       } else {
-        alert("Error deleting resignation: " + response.data.error);
+        alert("Error deleting resignation: " + (response.data?.error || "Unknown error"));
       }
     } catch (err) {
       console.error("Error deleting resignation:", err);
-      alert("Error deleting resignation record: " + (err.response?.data?.error || err.message));
+      alert("Error deleting resignation record: " + (err.response?.data?.error || err.message || "Unknown error"));
     }
   };
 
@@ -147,26 +188,60 @@ export default function ViewEmployeeResignation({ onEditEmployee, refreshTrigger
   };
 
   const handleSelectAll = () => {
-    if (selectedRows.length === resignations.length) {
+    if (selectedRows.length === (resignations || []).length) {
       setSelectedRows([]);
     } else {
-      setSelectedRows(resignations.map(item => item._id));
+      setSelectedRows((resignations || []).map(item => item._id || item.id));
     }
   };
 
   const startInlineEdit = (resignation) => {
-    setEditingRowId(resignation._id);
+    setEditingRowId(resignation._id || resignation.id);
+    
+    // Helper function to safely format date for input field
+    const formatDateForInput = (dateString) => {
+      if (!dateString) return "";
+      
+      // If it's already in YYYY-MM-DD format
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        return dateString;
+      }
+      
+      // If it's in DD-MM-YYYY format (display format)
+      if (/^\d{2}-\d{2}-\d{4}/.test(dateString)) {
+        const parts = dateString.split(/[-/ ]/);
+        if (parts.length >= 3) {
+          const day = parts[0];
+          const month = parts[1];
+          const year = parts[2];
+          return `${year}-${month}-${day}`;
+        }
+      }
+      
+      // Try to parse as Date
+      try {
+        const date = new Date(dateString);
+        if (!isNaN(date.getTime())) {
+          return date.toISOString().split('T')[0];
+        }
+      } catch (error) {
+        console.warn("Date parsing error:", error);
+      }
+      
+      return "";
+    };
+    
     setInlineEditForm({
       fullName: resignation.fullName || "",
-      birthDate: resignation.birthDate || "",
+      birthDate: formatDateForInput(resignation.birthDate),
       email: resignation.email || "",
       workEmail: resignation.workEmail || "",
       phone: resignation.phone || "",
       emergencyContact: resignation.emergencyContact || "",
-      hireDate: resignation.hireDate || "",
+      hireDate: formatDateForInput(resignation.hireDate),
       department: resignation.department || "",
       reportingManager: resignation.reportingManager || "",
-      addedOn: resignation.addedOn ? new Date(resignation.addedOn).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      addedOn: formatDateForInput(resignation.addedOn) || new Date().toISOString().split('T')[0],
       address: resignation.address || "",
       currentAddress: resignation.currentAddress || "",
       pincode: resignation.pincode || "",
@@ -175,7 +250,7 @@ export default function ViewEmployeeResignation({ onEditEmployee, refreshTrigger
       panNo: resignation.panNo || "",
       status: resignation.status || "Pending",
       resignationReason: resignation.resignationReason || "",
-      lastWorkingDay: resignation.lastWorkingDay || "",
+      lastWorkingDay: formatDateForInput(resignation.lastWorkingDay),
     });
   };
 
@@ -279,16 +354,16 @@ export default function ViewEmployeeResignation({ onEditEmployee, refreshTrigger
 
       const response = await axios.put(`${API_BASE}/${editingRowId}`, updateData);
       
-      if (response.data.success) {
+      if (response.data && response.data.success) {
         alert("Resignation record updated successfully!");
         loadResignations();
         loadStats();
       } else {
-        alert("Error updating resignation: " + response.data.error);
+        alert("Error updating resignation: " + (response.data?.error || "Unknown error"));
       }
     } catch (err) {
       console.error("Error updating resignation:", err);
-      alert("Error updating resignation record: " + (err.response?.data?.error || err.message));
+      alert("Error updating resignation record: " + (err.response?.data?.error || err.message || "Unknown error"));
     }
   };
 
@@ -304,34 +379,34 @@ export default function ViewEmployeeResignation({ onEditEmployee, refreshTrigger
     
     try {
       const response = await axios.put(`${API_BASE}/${id}`, { status: newStatus });
-      if (response.data.success) {
+      if (response.data && response.data.success) {
         alert(`Status updated to ${newStatus} successfully!`);
         loadResignations();
         loadStats();
       }
     } catch (err) {
-      alert("Error updating status: " + (err.response?.data?.error || err.message));
+      alert("Error updating status: " + (err.response?.data?.error || err.message || "Unknown error"));
     }
   };
 
   const shareWhatsapp = (resignation) => {
     const msg = `Employee Resignation Details:
     
-Name: ${resignation.fullName}
-Personal Email: ${resignation.email}
-Work Email: ${resignation.workEmail}
-Phone: ${resignation.phone}
-Emergency Contact: ${resignation.emergencyContact}
-Department: ${resignation.department}
-Reporting Manager: ${resignation.reportingManager}
-Hire Date: ${resignation.hireDate}
-Address: ${resignation.address}
-Current Address: ${resignation.currentAddress}
-City: ${resignation.city}, ${resignation.state} - ${resignation.pincode}
-PAN: ${resignation.panNo}
-Status: ${resignation.status}
-Birth Date: ${resignation.birthDate}
-Added On: ${resignation.addedOn}
+Name: ${resignation.fullName || ""}
+Personal Email: ${resignation.email || ""}
+Work Email: ${resignation.workEmail || ""}
+Phone: ${resignation.phone || ""}
+Emergency Contact: ${resignation.emergencyContact || ""}
+Department: ${resignation.department || ""}
+Reporting Manager: ${resignation.reportingManager || ""}
+Hire Date: ${resignation.hireDate || ""}
+Address: ${resignation.address || ""}
+Current Address: ${resignation.currentAddress || ""}
+City: ${resignation.city || ""}, ${resignation.state || ""} - ${resignation.pincode || ""}
+PAN: ${resignation.panNo || ""}
+Status: ${resignation.status || ""}
+Birth Date: ${resignation.birthDate || ""}
+Added On: ${resignation.addedOn || ""}
 ${resignation.resignationReason ? `Resignation Reason: ${resignation.resignationReason}` : ''}
 ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}` : ''}`;
     
@@ -339,24 +414,24 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
   };
 
   const shareMail = (resignation) => {
-    const subject = `Resignation - ${resignation.fullName}`;
+    const subject = `Resignation - ${resignation.fullName || "Employee"}`;
     const body = `Employee Resignation Details:
 
-Name: ${resignation.fullName}
-Personal Email: ${resignation.email}
-Work Email: ${resignation.workEmail}
-Phone: ${resignation.phone}
-Emergency Contact: ${resignation.emergencyContact}
-Department: ${resignation.department}
-Reporting Manager: ${resignation.reportingManager}
-Hire Date: ${resignation.hireDate}
-Address: ${resignation.address}
-Current Address: ${resignation.currentAddress}
-City: ${resignation.city}, ${resignation.state} - ${resignation.pincode}
-PAN: ${resignation.panNo}
-Status: ${resignation.status}
-Birth Date: ${resignation.birthDate}
-Added On: ${resignation.addedOn}
+Name: ${resignation.fullName || ""}
+Personal Email: ${resignation.email || ""}
+Work Email: ${resignation.workEmail || ""}
+Phone: ${resignation.phone || ""}
+Emergency Contact: ${resignation.emergencyContact || ""}
+Department: ${resignation.department || ""}
+Reporting Manager: ${resignation.reportingManager || ""}
+Hire Date: ${resignation.hireDate || ""}
+Address: ${resignation.address || ""}
+Current Address: ${resignation.currentAddress || ""}
+City: ${resignation.city || ""}, ${resignation.state || ""} - ${resignation.pincode || ""}
+PAN: ${resignation.panNo || ""}
+Status: ${resignation.status || ""}
+Birth Date: ${resignation.birthDate || ""}
+Added On: ${resignation.addedOn || ""}
 ${resignation.resignationReason ? `Resignation Reason: ${resignation.resignationReason}` : ''}
 ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}` : ''}`;
     
@@ -366,7 +441,7 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
 
   const exportToExcel = () => {
     try {
-      const ws = XLSX.utils.json_to_sheet(resignations.map((item, i) => ({
+      const dataToExport = (resignations || []).map((item, i) => ({
         "S.No": i + 1,
         "Employee ID": item.employeeId || "",
         "Full Name": item.fullName || "",
@@ -388,7 +463,9 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
         "Birth Date": item.birthDate || "",
         "Resignation Reason": item.resignationReason || "",
         "Last Working Day": item.lastWorkingDay || ""
-      })));
+      }));
+      
+      const ws = XLSX.utils.json_to_sheet(dataToExport);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Resignations");
       XLSX.writeFile(wb, "employee_resignation_export.xlsx");
@@ -406,7 +483,7 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
     }
 
     try {
-      const selectedData = resignations.filter(item => selectedRows.includes(item._id));
+      const selectedData = (resignations || []).filter(item => selectedRows.includes(item._id || item.id));
       const ws = XLSX.utils.json_to_sheet(selectedData.map((item, i) => ({
         "S.No": i + 1,
         "Employee ID": item.employeeId || "",
@@ -462,49 +539,60 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
     );
   }
 
+  const resignationData = resignations || [];
+  const resignationCount = resignationData.length;
+
   return (
-    <div className="container p-3" style={{ fontFamily: "Inter, sans-serif" }}>
+    <div className="p-3" style={{ fontFamily: "Inter, sans-serif" }}>
       {/* Stats Overview */}
-      <div className="row mb-4">
+      <div className="row mb-3 g-2">
         <div className="col-md-3">
-          <Card className="text-center shadow-sm">
-            <Card.Body>
-              <h5 className="text-muted">Total</h5>
-              <h2 className="fw-bold">{stats.total}</h2>
+          <Card className="text-center shadow-sm py-2">
+            <Card.Body className="p-2">
+              <h6 className="text-muted mb-1">Total</h6>
+              <h4 className="fw-bold mb-0">{stats.total || 0}</h4>
             </Card.Body>
           </Card>
         </div>
         <div className="col-md-3">
-          <Card className="text-center shadow-sm bg-warning bg-opacity-10">
-            <Card.Body>
-              <h5 className="text-muted">Pending</h5>
-              <h2 className="fw-bold text-warning">{stats.byStatus.Pending || 0}</h2>
+          <Card className="text-center shadow-sm bg-warning bg-opacity-10 py-2">
+            <Card.Body className="p-2">
+              <h6 className="text-muted mb-1">Pending</h6>
+              <h4 className="fw-bold text-warning mb-0">{stats.byStatus?.Pending || 0}</h4>
             </Card.Body>
           </Card>
         </div>
         <div className="col-md-3">
-          <Card className="text-center shadow-sm bg-success bg-opacity-10">
-            <Card.Body>
-              <h5 className="text-muted">Processed</h5>
-              <h2 className="fw-bold text-success">{stats.byStatus.Processed || 0}</h2>
+          <Card className="text-center shadow-sm bg-success bg-opacity-10 py-2">
+            <Card.Body className="p-2">
+              <h6 className="text-muted mb-1">Processed</h6>
+              <h4 className="fw-bold text-success mb-0">{stats.byStatus?.Processed || 0}</h4>
             </Card.Body>
           </Card>
         </div>
         <div className="col-md-3">
-          <Card className="text-center shadow-sm bg-danger bg-opacity-10">
-            <Card.Body>
-              <h5 className="text-muted">Rejected</h5>
-              <h2 className="fw-bold text-danger">{stats.byStatus.Rejected || 0}</h2>
+          <Card className="text-center shadow-sm bg-danger bg-opacity-10 py-2">
+            <Card.Body className="p-2">
+              <h6 className="text-muted mb-1">Rejected</h6>
+              <h4 className="fw-bold text-danger mb-0">{stats.byStatus?.Rejected || 0}</h4>
             </Card.Body>
           </Card>
         </div>
       </div>
 
-      <Card className="shadow-sm border-0">
-        <Card.Body>
+      <div className="card shadow-sm border-0">
+        <div className="card-body p-3">
           <div className="d-flex justify-content-between align-items-center mb-3">
-            <h5 className="mb-0">Resignation Records ({resignations.length})</h5>
+            <h6 className="mb-0">Resignation Records ({resignationCount})</h6>
             <div className="d-flex gap-2">
+              <Button
+                variant={showCompactView ? "primary" : "outline-primary"}
+                size="sm"
+                onClick={() => setShowCompactView(!showCompactView)}
+                title={showCompactView ? "Show All Columns" : "Show Compact View"}
+              >
+                {showCompactView ? "Full View" : "Compact"}
+              </Button>
               <Button
                 variant="outline-secondary"
                 size="sm"
@@ -513,7 +601,7 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
               >
                 <FaSync />
               </Button>
-              {resignations.length > 0 && (
+              {resignationCount > 0 && (
                 <Button
                   variant="success"
                   size="sm"
@@ -528,8 +616,8 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
           </div>
 
           {selectedRows.length > 0 && (
-            <Alert variant="info" className="d-flex justify-content-between align-items-center">
-              <span>{selectedRows.length} resignation(s) selected</span>
+            <Alert variant="info" className="d-flex justify-content-between align-items-center py-2 mb-3">
+              <span className="small">{selectedRows.length} resignation(s) selected</span>
               <div className="d-flex gap-2">
                 <Button
                   variant="warning"
@@ -551,191 +639,219 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
             </Alert>
           )}
 
-          {resignations.length === 0 ? (
-            <Alert variant="info">
-              No resignation records found. Add your first resignation using the form above.
+          {resignationCount === 0 ? (
+            <Alert variant="info" className="py-2">
+              No resignation records found.
             </Alert>
           ) : (
             <>
-              <div className="table-responsive">
-                <Table bordered hover className="mt-3">
+              <div className="table-responsive" style={{ maxHeight: "70vh", overflow: "auto" }}>
+                <Table bordered hover className="mt-2 mb-0" size="sm">
                   <thead className="table-light">
                     <tr>
-                      <th width="3%">
+                      <th width="30px" className="text-center">
                         <input
                           type="checkbox"
-                          checked={selectedRows.length === resignations.length && resignations.length > 0}
+                          checked={selectedRows.length === resignationCount && resignationCount > 0}
                           onChange={handleSelectAll}
-                          disabled={resignations.length === 0}
+                          disabled={resignationCount === 0}
+                          className="form-check-input"
                         />
                       </th>
-                      <th width="3%">#</th>
-                      <th width="8%">Emp ID</th>
-                      <th width="8%">Full Name</th>
-                      <th width="8%">Personal Email</th>
-                      <th width="8%">Work Email</th>
-                      <th width="6%">Phone</th>
-                      <th width="6%">Emergency</th>
-                      <th width="8%">Department</th>
-                      <th width="8%">Manager</th>
-                      <th width="6%">Status</th>
-                      <th width="7%">Added On</th>
-                      <th className="text-center" width="12%">
+                      <th width="40px" className="text-center">#</th>
+                      {!showCompactView && <th width="80px">Emp ID</th>}
+                      <th width={showCompactView ? "120px" : "100px"}>Full Name</th>
+                      {!showCompactView && <th width="120px">Personal Email</th>}
+                      {!showCompactView && <th width="120px">Work Email</th>}
+                      <th width="90px">Phone</th>
+                      {!showCompactView && <th width="90px">Emergency</th>}
+                      <th width="100px">Department</th>
+                      {!showCompactView && <th width="100px">Manager</th>}
+                      <th width="90px">Status</th>
+                      {!showCompactView && <th width="100px">Added On</th>}
+                      <th className="text-center" width={showCompactView ? "180px" : "220px"}>
                         Actions
                       </th>
                     </tr>
                   </thead>
 
                   <tbody>
-                    {resignations.map((resignation, index) => (
-                      <tr key={resignation._id}>
-                        <td>
+                    {resignationData.map((resignation, index) => (
+                      <tr key={resignation._id || resignation.id || index}>
+                        <td className="text-center">
                           <input
                             type="checkbox"
-                            checked={selectedRows.includes(resignation._id)}
-                            onChange={() => handleSelectRow(resignation._id)}
-                            disabled={editingRowId === resignation._id}
+                            className="form-check-input"
+                            checked={selectedRows.includes(resignation._id || resignation.id)}
+                            onChange={() => handleSelectRow(resignation._id || resignation.id)}
+                            disabled={editingRowId === (resignation._id || resignation.id)}
                           />
                         </td>
-                        <td>{index + 1}</td>
+                        <td className="text-center">{index + 1}</td>
                         
                         {/* Employee ID Column */}
-                        <td>
-                          <small className="text-muted">{resignation.employeeId}</small>
-                        </td>
+                        {!showCompactView && (
+                          <td>
+                            <small className="text-muted">{resignation.employeeId || "-"}</small>
+                          </td>
+                        )}
                         
                         {/* Full Name Column */}
                         <td>
-                          {editingRowId === resignation._id ? (
+                          {editingRowId === (resignation._id || resignation.id) ? (
                             <input
                               type="text"
                               name="fullName"
                               value={inlineEditForm.fullName || ""}
                               onChange={handleInlineEditChange}
                               className="form-control form-control-sm"
-                              style={{ width: "100%" }}
+                              size="10"
                               required
                             />
                           ) : (
-                            <span className="fw-semibold">{resignation.fullName}</span>
+                            <span className="fw-semibold" title={resignation.fullName}>
+                              {resignation.fullName && resignation.fullName.length > 15 ? 
+                                resignation.fullName.substring(0, 12) + "..." : 
+                                resignation.fullName || "-"}
+                            </span>
                           )}
                         </td>
                         
                         {/* Personal Email Column */}
-                        <td>
-                          {editingRowId === resignation._id ? (
-                            <input
-                              type="email"
-                              name="email"
-                              value={inlineEditForm.email || ""}
-                              onChange={handleInlineEditChange}
-                              className="form-control form-control-sm"
-                              style={{ width: "100%" }}
-                              required
-                            />
-                          ) : (
-                            <a href={`mailto:${resignation.email}`} className="text-decoration-none small">
-                              {resignation.email}
-                            </a>
-                          )}
-                        </td>
+                        {!showCompactView && (
+                          <td>
+                            {editingRowId === (resignation._id || resignation.id) ? (
+                              <input
+                                type="email"
+                                name="email"
+                                value={inlineEditForm.email || ""}
+                                onChange={handleInlineEditChange}
+                                className="form-control form-control-sm"
+                                size="10"
+                                required
+                              />
+                            ) : (
+                              <a href={`mailto:${resignation.email}`} className="text-decoration-none small" title={resignation.email}>
+                                {resignation.email && resignation.email.length > 15 ? 
+                                  resignation.email.substring(0, 12) + "..." : 
+                                  resignation.email || "-"}
+                              </a>
+                            )}
+                          </td>
+                        )}
                         
                         {/* Work Email Column */}
-                        <td>
-                          {editingRowId === resignation._id ? (
-                            <input
-                              type="email"
-                              name="workEmail"
-                              value={inlineEditForm.workEmail || ""}
-                              onChange={handleInlineEditChange}
-                              className="form-control form-control-sm"
-                              style={{ width: "100%" }}
-                              required
-                            />
-                          ) : (
-                            <a href={`mailto:${resignation.workEmail}`} className="text-decoration-none small">
-                              {resignation.workEmail}
-                            </a>
-                          )}
-                        </td>
+                        {!showCompactView && (
+                          <td>
+                            {editingRowId === (resignation._id || resignation.id) ? (
+                              <input
+                                type="email"
+                                name="workEmail"
+                                value={inlineEditForm.workEmail || ""}
+                                onChange={handleInlineEditChange}
+                                className="form-control form-control-sm"
+                                size="10"
+                                required
+                              />
+                            ) : (
+                              <a href={`mailto:${resignation.workEmail}`} className="text-decoration-none small" title={resignation.workEmail}>
+                                {resignation.workEmail && resignation.workEmail.length > 15 ? 
+                                  resignation.workEmail.substring(0, 12) + "..." : 
+                                  resignation.workEmail || "-"}
+                              </a>
+                            )}
+                          </td>
+                        )}
                         
                         {/* Phone Column */}
                         <td>
-                          {editingRowId === resignation._id ? (
+                          {editingRowId === (resignation._id || resignation.id) ? (
                             <input
                               type="text"
                               name="phone"
                               value={inlineEditForm.phone || ""}
                               onChange={handleInlineEditChange}
                               className="form-control form-control-sm"
-                              style={{ width: "100%" }}
+                              size="8"
                               required
                               maxLength="10"
                             />
                           ) : (
-                            <a href={`tel:${resignation.phone}`} className="text-decoration-none">
+                            <a href={`tel:${resignation.phone}`} className="text-decoration-none small">
                               {resignation.phone || "-"}
                             </a>
                           )}
                         </td>
                         
                         {/* Emergency Contact Column */}
-                        <td>
-                          {editingRowId === resignation._id ? (
-                            <input
-                              type="text"
-                              name="emergencyContact"
-                              value={inlineEditForm.emergencyContact || ""}
-                              onChange={handleInlineEditChange}
-                              className="form-control form-control-sm"
-                              style={{ width: "100%" }}
-                              required
-                              maxLength="10"
-                            />
-                          ) : (
-                            <a href={`tel:${resignation.emergencyContact}`} className="text-decoration-none">
-                              {resignation.emergencyContact || "-"}
-                            </a>
-                          )}
-                        </td>
+                        {!showCompactView && (
+                          <td>
+                            {editingRowId === (resignation._id || resignation.id) ? (
+                              <input
+                                type="text"
+                                name="emergencyContact"
+                                value={inlineEditForm.emergencyContact || ""}
+                                onChange={handleInlineEditChange}
+                                className="form-control form-control-sm"
+                                size="8"
+                                required
+                                maxLength="10"
+                              />
+                            ) : (
+                              <a href={`tel:${resignation.emergencyContact}`} className="text-decoration-none small">
+                                {resignation.emergencyContact || "-"}
+                              </a>
+                            )}
+                          </td>
+                        )}
                         
                         {/* Department Column */}
                         <td>
-                          {editingRowId === resignation._id ? (
+                          {editingRowId === (resignation._id || resignation.id) ? (
                             <input
                               type="text"
                               name="department"
                               value={inlineEditForm.department || ""}
                               onChange={handleInlineEditChange}
                               className="form-control form-control-sm"
-                              style={{ width: "100%" }}
+                              size="10"
                               required
                             />
                           ) : (
-                            resignation.department || "-"
+                            <span title={resignation.department}>
+                              {resignation.department && resignation.department.length > 12 ? 
+                                resignation.department.substring(0, 10) + "..." : 
+                                resignation.department || "-"}
+                            </span>
                           )}
                         </td>
                         
                         {/* Reporting Manager Column */}
-                        <td>
-                          {editingRowId === resignation._id ? (
-                            <input
-                              type="text"
-                              name="reportingManager"
-                              value={inlineEditForm.reportingManager || ""}
-                              onChange={handleInlineEditChange}
-                              className="form-control form-control-sm"
-                              style={{ width: "100%" }}
-                              required
-                            />
-                          ) : (
-                            resignation.reportingManager || "-"
-                          )}
-                        </td>
+                        {!showCompactView && (
+                          <td>
+                            {editingRowId === (resignation._id || resignation.id) ? (
+                              <input
+                                type="text"
+                                name="reportingManager"
+                                value={inlineEditForm.reportingManager || ""}
+                                onChange={handleInlineEditChange}
+                                className="form-control form-control-sm"
+                                size="10"
+                                required
+                              />
+                            ) : (
+                              <span title={resignation.reportingManager}>
+                                {resignation.reportingManager && resignation.reportingManager.length > 12 ? 
+                                  resignation.reportingManager.substring(0, 10) + "..." : 
+                                  resignation.reportingManager || "-"}
+                              </span>
+                            )}
+                          </td>
+                        )}
                         
                         {/* Status Column */}
                         <td>
-                          {editingRowId === resignation._id ? (
+                          {editingRowId === (resignation._id || resignation.id) ? (
                             <select
                               name="status"
                               value={inlineEditForm.status || "Pending"}
@@ -748,39 +864,40 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
                               <option value="Rejected">Rejected</option>
                             </select>
                           ) : (
-                            getStatusBadge(resignation.status)
+                            getStatusBadge(resignation.status || "Pending")
                           )}
                         </td>
                         
                         {/* Added On Column */}
-                        <td>
-                          {editingRowId === resignation._id ? (
-                            <input
-                              type="date"
-                              name="addedOn"
-                              value={inlineEditForm.addedOn || ""}
-                              onChange={handleInlineEditChange}
-                              className="form-control form-control-sm"
-                              style={{ width: "100%" }}
-                              required
-                            />
-                          ) : (
-                            <small className="text-muted">{resignation.addedOn}</small>
-                          )}
-                        </td>
+                        {!showCompactView && (
+                          <td>
+                            {editingRowId === (resignation._id || resignation.id) ? (
+                              <input
+                                type="date"
+                                name="addedOn"
+                                value={inlineEditForm.addedOn || ""}
+                                onChange={handleInlineEditChange}
+                                className="form-control form-control-sm"
+                                size="8"
+                                required
+                              />
+                            ) : (
+                              <small className="text-muted">{resignation.addedOn || "-"}</small>
+                            )}
+                          </td>
+                        )}
                         
                         {/* Actions Column */}
                         <td className="text-center">
-                          {editingRowId === resignation._id ? (
-                            <div className="d-flex gap-2 justify-content-center">
+                          {editingRowId === (resignation._id || resignation.id) ? (
+                            <div className="d-flex gap-1 justify-content-center">
                               <Button
                                 size="sm"
                                 variant="success"
                                 onClick={saveInlineEdit}
                                 title="Save"
                               >
-                                <FaSave className="me-1" />
-                                Save
+                                <FaSave />
                               </Button>
                               <Button
                                 size="sm"
@@ -788,12 +905,11 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
                                 onClick={cancelInlineEdit}
                                 title="Cancel"
                               >
-                                <FaTimes className="me-1" />
-                                Cancel
+                                <FaTimes />
                               </Button>
                             </div>
                           ) : (
-                            <div className="d-flex gap-2 justify-content-center">
+                            <div className="d-flex gap-1 justify-content-center">
                               {/* Primary Actions */}
                               <Button
                                 size="sm"
@@ -818,11 +934,33 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
                               <Button
                                 size="sm"
                                 variant="danger"
-                                onClick={() => handleDelete(resignation._id)}
+                                onClick={() => handleDelete(resignation._id || resignation.id)}
                                 title="Delete"
                                 className="d-none d-md-inline-flex align-items-center"
                               >
                                 <FaTrash />
+                              </Button>
+
+                              {/* WhatsApp Share Button */}
+                              <Button
+                                size="sm"
+                                variant="success"
+                                onClick={() => shareWhatsapp(resignation)}
+                                title="Share via WhatsApp"
+                                className="d-none d-md-inline-flex align-items-center"
+                              >
+                                <FaWhatsapp />
+                              </Button>
+
+                              {/* Email Share Button */}
+                              <Button
+                                size="sm"
+                                variant="primary"
+                                onClick={() => shareMail(resignation)}
+                                title="Share via Email"
+                                className="d-none d-md-inline-flex align-items-center"
+                              >
+                                <FaEnvelope />
                               </Button>
 
                               {/* Mobile Dropdown for smaller screens */}
@@ -839,15 +977,8 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
                                 <Dropdown.Item onClick={() => startInlineEdit(resignation)}>
                                   <FaEdit className="me-2" /> Edit
                                 </Dropdown.Item>
-                                <Dropdown.Item onClick={() => handleDelete(resignation._id)}>
+                                <Dropdown.Item onClick={() => handleDelete(resignation._id || resignation.id)}>
                                   <FaTrash className="me-2" /> Delete
-                                </Dropdown.Item>
-                                <Dropdown.Divider />
-                                <Dropdown.Item onClick={() => updateStatus(resignation._id, "Processed")}>
-                                  <FaCheck className="me-2" /> Mark Processed
-                                </Dropdown.Item>
-                                <Dropdown.Item onClick={() => updateStatus(resignation._id, "Rejected")}>
-                                  <FaTimesCircle className="me-2" /> Mark Rejected
                                 </Dropdown.Item>
                                 <Dropdown.Divider />
                                 <Dropdown.Item onClick={() => shareWhatsapp(resignation)}>
@@ -866,35 +997,37 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
                 </Table>
               </div>
 
-              
+              <div className="mt-3 text-muted small">
+                <div>Total Records: {resignationCount} | Selected: {selectedRows.length}</div>
+              </div>
             </>
           )}
-        </Card.Body>
-      </Card>
+        </div>
+      </div>
 
       {/* View Details Modal */}
-      <Modal show={viewModal.show} onHide={() => setViewModal({ show: false, data: null })} size="xl" className="m-5">
+      <Modal show={viewModal.show} onHide={() => setViewModal({ show: false, data: null })} size="lg">
         <Modal.Header closeButton>
-          <Modal.Title>Resignation Details - {viewModal.data?.employeeId}</Modal.Title>
+          <Modal.Title>Resignation Details - {viewModal.data?.employeeId || "N/A"}</Modal.Title>
         </Modal.Header>
-        <Modal.Body >
+        <Modal.Body>
           {viewModal.data && (
-            <div className="row justify-content-center">
+            <div className="row">
               <div className="col-md-6 mb-3">
                 <label className="fw-bold">Employee ID:</label>
-                <p className="text-primary">{viewModal.data.employeeId}</p>
+                <p className="text-primary">{viewModal.data.employeeId || "-"}</p>
               </div>
               <div className="col-md-6 mb-3">
                 <label className="fw-bold">Full Name:</label>
-                <p>{viewModal.data.fullName}</p>
+                <p>{viewModal.data.fullName || "-"}</p>
               </div>
               <div className="col-md-6 mb-3">
                 <label className="fw-bold">Personal Email:</label>
-                <p>{viewModal.data.email}</p>
+                <p>{viewModal.data.email || "-"}</p>
               </div>
               <div className="col-md-6 mb-3">
                 <label className="fw-bold">Work Email:</label>
-                <p>{viewModal.data.workEmail}</p>
+                <p>{viewModal.data.workEmail || "-"}</p>
               </div>
               <div className="col-md-6 mb-3">
                 <label className="fw-bold">Phone:</label>
@@ -910,7 +1043,7 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
               </div>
               <div className="col-md-6 mb-3">
                 <label className="fw-bold">Status:</label>
-                <p>{getStatusBadge(viewModal.data.status)}</p>
+                <p>{getStatusBadge(viewModal.data.status || "Pending")}</p>
               </div>
               <div className="col-md-6 mb-3">
                 <label className="fw-bold">Birth Date:</label>
@@ -928,11 +1061,11 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
                 <label className="fw-bold">Reporting Manager:</label>
                 <p>{viewModal.data.reportingManager || "-"}</p>
               </div>
-              <div className="col-md-12 mb-3">
+              <div className="col-12 mb-3">
                 <label className="fw-bold">Address:</label>
                 <p>{viewModal.data.address || "-"}</p>
               </div>
-              <div className="col-md-12 mb-3">
+              <div className="col-12 mb-3">
                 <label className="fw-bold">Current Address:</label>
                 <p>{viewModal.data.currentAddress || "-"}</p>
               </div>
@@ -957,7 +1090,7 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
                 <p>{viewModal.data.lastWorkingDay || "-"}</p>
               </div>
               {viewModal.data.resignationReason && (
-                <div className="col-md-12 mb-3">
+                <div className="col-12 mb-3">
                   <label className="fw-bold">Resignation Reason:</label>
                   <p>{viewModal.data.resignationReason}</p>
                 </div>
@@ -965,17 +1098,17 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
             </div>
           )}
         </Modal.Body>
-        <Modal.Footer>
+        <Modal.Footer className="py-2">
           <div className="d-flex justify-content-between w-100">
-            <div>
-              <Button variant="success" onClick={() => shareWhatsapp(viewModal.data)} className="me-2">
-                <FaWhatsapp className="me-1" /> Share via WhatsApp
+            <div className="d-flex gap-2">
+              <Button variant="success" size="sm" onClick={() => shareWhatsapp(viewModal.data)}>
+                <FaWhatsapp className="me-1" /> WhatsApp
               </Button>
-              <Button variant="info" onClick={() => shareMail(viewModal.data)}>
-                <FaEnvelope className="me-1" /> Share via Email
+              <Button variant="info" size="sm" onClick={() => shareMail(viewModal.data)}>
+                <FaEnvelope className="me-1" /> Email
               </Button>
             </div>
-            <Button variant="secondary" onClick={() => setViewModal({ show: false, data: null })}>
+            <Button variant="secondary" size="sm" onClick={() => setViewModal({ show: false, data: null })}>
               Close
             </Button>
           </div>
@@ -983,78 +1116,78 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
       </Modal>
 
       {/* Edit Modal for Larger Screens (Alternative to inline) */}
-      <Modal show={editingRowId !== null} onHide={cancelInlineEdit} size="xl" className="m-5">
+      <Modal show={editingRowId !== null} onHide={cancelInlineEdit} size="lg">
         <Modal.Header closeButton>
           <Modal.Title>Edit Resignation Record</Modal.Title>
         </Modal.Header>
-        <Modal.Body  cl>
+        <Modal.Body>
           {editingRowId && (
-            <div className="row">
-              <div className="col-md-6 mb-3">
-                <label className="form-label fw-bold">Full Name *</label>
+            <div className="row g-2">
+              <div className="col-md-6">
+                <label className="form-label fw-bold small">Full Name *</label>
                 <input
                   type="text"
                   name="fullName"
                   value={inlineEditForm.fullName || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
+                  className="form-control form-control-sm"
                   required
                 />
               </div>
-              <div className="col-md-6 mb-3">
-                <label className="form-label fw-bold">Personal Email *</label>
+              <div className="col-md-6">
+                <label className="form-label fw-bold small">Personal Email *</label>
                 <input
                   type="email"
                   name="email"
                   value={inlineEditForm.email || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
+                  className="form-control form-control-sm"
                   required
                 />
               </div>
-              <div className="col-md-6 mb-3">
-                <label className="form-label fw-bold">Work Email *</label>
+              <div className="col-md-6">
+                <label className="form-label fw-bold small">Work Email *</label>
                 <input
                   type="email"
                   name="workEmail"
                   value={inlineEditForm.workEmail || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
+                  className="form-control form-control-sm"
                   required
                 />
               </div>
-              <div className="col-md-6 mb-3">
-                <label className="form-label fw-bold">Phone *</label>
+              <div className="col-md-6">
+                <label className="form-label fw-bold small">Phone *</label>
                 <input
                   type="text"
                   name="phone"
                   value={inlineEditForm.phone || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
+                  className="form-control form-control-sm"
                   required
                   maxLength="10"
                 />
               </div>
-              <div className="col-md-6 mb-3">
-                <label className="form-label fw-bold">Emergency Contact *</label>
+              <div className="col-md-6">
+                <label className="form-label fw-bold small">Emergency Contact *</label>
                 <input
                   type="text"
                   name="emergencyContact"
                   value={inlineEditForm.emergencyContact || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
+                  className="form-control form-control-sm"
                   required
                   maxLength="10"
                 />
               </div>
-              <div className="col-md-6 mb-3">
-                <label className="form-label fw-bold">PAN Number *</label>
+              <div className="col-md-6">
+                <label className="form-label fw-bold small">PAN Number *</label>
                 <input
                   type="text"
                   name="panNo"
                   value={inlineEditForm.panNo || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
+                  className="form-control form-control-sm"
                   required
                   onBlur={(e) => {
                     if (e.target.value) {
@@ -1066,157 +1199,157 @@ ${resignation.lastWorkingDay ? `Last Working Day: ${resignation.lastWorkingDay}`
                   }}
                 />
               </div>
-              <div className="col-md-6 mb-3">
-                <label className="form-label fw-bold">Hire Date *</label>
+              <div className="col-md-6">
+                <label className="form-label fw-bold small">Hire Date *</label>
                 <input
                   type="date"
                   name="hireDate"
                   value={inlineEditForm.hireDate || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
+                  className="form-control form-control-sm"
                   required
                 />
               </div>
-              <div className="col-md-6 mb-3">
-                <label className="form-label fw-bold">Department *</label>
+              <div className="col-md-6">
+                <label className="form-label fw-bold small">Department *</label>
                 <input
                   type="text"
                   name="department"
                   value={inlineEditForm.department || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
+                  className="form-control form-control-sm"
                   required
                 />
               </div>
-              <div className="col-md-6 mb-3">
-                <label className="form-label fw-bold">Reporting Manager *</label>
+              <div className="col-md-6">
+                <label className="form-label fw-bold small">Reporting Manager *</label>
                 <input
                   type="text"
                   name="reportingManager"
                   value={inlineEditForm.reportingManager || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
+                  className="form-control form-control-sm"
                   required
                 />
               </div>
-              <div className="col-md-6 mb-3">
-                <label className="form-label fw-bold">Birth Date</label>
+              <div className="col-md-6">
+                <label className="form-label fw-bold small">Birth Date</label>
                 <input
                   type="date"
                   name="birthDate"
                   value={inlineEditForm.birthDate || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
+                  className="form-control form-control-sm"
                 />
               </div>
-              <div className="col-md-6 mb-3">
-                <label className="form-label fw-bold">Added On *</label>
+              <div className="col-md-6">
+                <label className="form-label fw-bold small">Added On *</label>
                 <input
                   type="date"
                   name="addedOn"
                   value={inlineEditForm.addedOn || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
+                  className="form-control form-control-sm"
                   required
                 />
               </div>
-              <div className="col-md-6 mb-3">
-                <label className="form-label fw-bold">Status</label>
+              <div className="col-md-6">
+                <label className="form-label fw-bold small">Status</label>
                 <select
                   name="status"
                   value={inlineEditForm.status || "Pending"}
                   onChange={handleInlineEditChange}
-                  className="form-select"
+                  className="form-select form-select-sm"
                 >
                   <option value="Pending">Pending</option>
                   <option value="Processed">Processed</option>
                   <option value="Rejected">Rejected</option>
                 </select>
               </div>
-              <div className="col-md-6 mb-3">
-                <label className="form-label fw-bold">Last Working Day</label>
+              <div className="col-md-6">
+                <label className="form-label fw-bold small">Last Working Day</label>
                 <input
                   type="date"
                   name="lastWorkingDay"
                   value={inlineEditForm.lastWorkingDay || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
+                  className="form-control form-control-sm"
                 />
               </div>
-              <div className="col-md-12 mb-3">
-                <label className="form-label fw-bold">Address *</label>
+              <div className="col-12">
+                <label className="form-label fw-bold small">Address *</label>
                 <textarea
                   name="address"
                   value={inlineEditForm.address || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
+                  className="form-control form-control-sm"
                   rows="2"
                   required
                 />
               </div>
-              <div className="col-md-12 mb-3">
-                <label className="form-label fw-bold">Current Address *</label>
+              <div className="col-12">
+                <label className="form-label fw-bold small">Current Address *</label>
                 <textarea
                   name="currentAddress"
                   value={inlineEditForm.currentAddress || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
+                  className="form-control form-control-sm"
                   rows="2"
                   required
                 />
               </div>
-              <div className="col-md-4 mb-3">
-                <label className="form-label fw-bold">City *</label>
+              <div className="col-md-4">
+                <label className="form-label fw-bold small">City *</label>
                 <input
                   type="text"
                   name="city"
                   value={inlineEditForm.city || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
+                  className="form-control form-control-sm"
                   required
                 />
               </div>
-              <div className="col-md-4 mb-3">
-                <label className="form-label fw-bold">State *</label>
+              <div className="col-md-4">
+                <label className="form-label fw-bold small">State *</label>
                 <input
                   type="text"
                   name="state"
                   value={inlineEditForm.state || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
+                  className="form-control form-control-sm"
                   required
                 />
               </div>
-              <div className="col-md-4 mb-3">
-                <label className="form-label fw-bold">Pincode *</label>
+              <div className="col-md-4">
+                <label className="form-label fw-bold small">Pincode *</label>
                 <input
                   type="text"
                   name="pincode"
                   value={inlineEditForm.pincode || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
+                  className="form-control form-control-sm"
                   required
                   maxLength="6"
                 />
               </div>
-              <div className="col-md-12 mb-3">
-                <label className="form-label fw-bold">Resignation Reason</label>
+              <div className="col-12">
+                <label className="form-label fw-bold small">Resignation Reason</label>
                 <textarea
                   name="resignationReason"
                   value={inlineEditForm.resignationReason || ""}
                   onChange={handleInlineEditChange}
-                  className="form-control"
-                  rows="3"
+                  className="form-control form-control-sm"
+                  rows="2"
                 />
               </div>
             </div>
           )}
         </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={cancelInlineEdit}>
+        <Modal.Footer className="py-2">
+          <Button variant="secondary" size="sm" onClick={cancelInlineEdit}>
             Cancel
           </Button>
-          <Button variant="success" onClick={saveInlineEdit}>
+          <Button variant="success" size="sm" onClick={saveInlineEdit}>
             <FaSave className="me-1" /> Save Changes
           </Button>
         </Modal.Footer>

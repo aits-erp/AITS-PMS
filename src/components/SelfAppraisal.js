@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import { 
   FaUpload, 
@@ -9,15 +9,16 @@ import {
   FaSpinner, 
   FaSearch, 
   FaTimes,
-  FaIdCard 
+  FaIdCard,
+  FaExclamationTriangle,
+  FaRedo
 } from "react-icons/fa";
 import * as XLSX from "xlsx";
 import axios from "axios";
 
 export default function SelfAppraisal() {
   // Backend API URL
-   const API_BASE = `${process.env.REACT_APP_API_BASE}/api/self-appraisals`;
-//  const API_BASE = process.env.REACT_APP_API_BASE || "https://pms-lj2e.onrender.com/api/self-appraisals";
+  const API_BASE = `${process.env.REACT_APP_API_BASE}/api/self-appraisals`;
   
   // Employee search state
   const [employeeData, setEmployeeData] = useState([]);
@@ -27,6 +28,9 @@ export default function SelfAppraisal() {
   const [employee, setEmployee] = useState("");
   const [employeeId, setEmployeeId] = useState("");
   const [backendError, setBackendError] = useState("");
+  const [currentAppraisalId, setCurrentAppraisalId] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState({ message: "", type: "" });
 
   const searchDropdownRef = useRef(null);
   const searchInputRef = useRef(null);
@@ -50,6 +54,15 @@ export default function SelfAppraisal() {
   useEffect(() => {
     fetchEmployeeData();
     
+    // Load saved employee from localStorage
+    const savedEmployee = localStorage.getItem("selectedEmployee");
+    const savedEmployeeId = localStorage.getItem("selectedEmployeeId");
+    if (savedEmployee && savedEmployeeId) {
+      setEmployee(savedEmployee);
+      setEmployeeId(savedEmployeeId);
+      setSearchTerm(`${savedEmployee} (${savedEmployeeId})`);
+    }
+    
     // Close dropdowns when clicking outside
     const handleClickOutside = (event) => {
       if (searchDropdownRef.current && !searchDropdownRef.current.contains(event.target) &&
@@ -62,34 +75,27 @@ export default function SelfAppraisal() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Load draft from backend when component mounts
+  // Load draft from backend when employee changes
   useEffect(() => {
-    // Load from localStorage first for compatibility
-    const storedEmployee = localStorage.getItem("selectedEmployee");
-    const storedEmployeeId = localStorage.getItem("selectedEmployeeId");
-    
-    if (storedEmployee) {
-      setEmployee(storedEmployee);
-      setEmployeeId(storedEmployeeId || "");
-      setSearchTerm(storedEmployeeId ? `${storedEmployee} (${storedEmployeeId})` : storedEmployee);
+    if (employeeId) {
+      loadDraftFromBackend();
+    } else {
+      // Clear data if no employee selected
+      setRows([]);
+      setCards([]);
+      setCurrentAppraisalId("");
     }
-    
-    loadDraftFromBackend();
-  }, []);
+  }, [employeeId]);
 
   // Fetch employee data from backend
   const fetchEmployeeData = async () => {
     setIsLoadingData(true);
     setBackendError("");
     try {
-      // Use the resignation API endpoints
-      //const RESIGNATION_API = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/employee-resignation";
-       const RESIGNATION_API = `${process.env.REACT_APP_API_BASE}/api/employee-resignation`;
-      // Try /all-ids endpoint
+      const RESIGNATION_API = `${process.env.REACT_APP_API_BASE}/api/employee-resignation`;
       const response = await axios.get(`${RESIGNATION_API}/all-ids`);
       
       if (response.data.success) {
-        // Transform the data to match expected format
         const formattedData = response.data.data.map(item => ({
           employeeId: item.employeeId || item._id,
           fullName: item.employeeName || item.fullName || item.name || "Unknown",
@@ -102,30 +108,8 @@ export default function SelfAppraisal() {
       }
     } catch (error) {
       console.error("Error fetching employee data:", error);
-      
-      // Fallback to /names endpoint
-      try {
-		
-        const RESIGNATION_API = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/employee-resignation";
-        const response = await axios.get(`${RESIGNATION_API}/names`);
-        
-        if (response.data.success) {
-          const namesData = response.data.data || [];
-          // Convert names array to expected format
-          const formattedData = namesData.map((name, index) => ({
-            employeeId: `EMP-${index + 1000}`,
-            fullName: name,
-            email: "",
-            status: "Active"
-          }));
-          setEmployeeData(formattedData);
-        } else {
-          throw new Error("Failed to fetch employee names");
-        }
-      } catch (fallbackError) {
-        setBackendError("Unable to load employee data. Please ensure resignation records exist.");
-        setEmployeeData([]);
-      }
+      setBackendError("Unable to load employee data. Please ensure resignation records exist.");
+      setEmployeeData([]);
     } finally {
       setIsLoadingData(false);
     }
@@ -147,7 +131,7 @@ export default function SelfAppraisal() {
     }
   };
 
-  const handleEmployeeSelect = (item) => {
+  const handleEmployeeSelect = async (item) => {
     setEmployee(item.fullName);
     setEmployeeId(item.employeeId);
     setSearchTerm(`${item.fullName} (${item.employeeId})`);
@@ -156,6 +140,9 @@ export default function SelfAppraisal() {
     // Save to localStorage for persistence
     localStorage.setItem("selectedEmployee", item.fullName);
     localStorage.setItem("selectedEmployeeId", item.employeeId);
+    
+    // Load draft for this employee
+    await loadDraftFromBackend();
   };
 
   const clearSearchField = () => {
@@ -168,6 +155,9 @@ export default function SelfAppraisal() {
     setEmployeeId("");
     setSearchTerm("");
     setShowSearchDropdown(false);
+    setCurrentAppraisalId("");
+    setRows([]);
+    setCards([]);
     localStorage.removeItem("selectedEmployee");
     localStorage.removeItem("selectedEmployeeId");
   };
@@ -182,85 +172,220 @@ export default function SelfAppraisal() {
     fetchEmployeeData();
   };
 
+  // Get current appraisal period
+  const getCurrentAppraisalPeriod = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const quarter = Math.floor(now.getMonth() / 3) + 1;
+    return `${year}-Q${quarter}`;
+  };
+
   // Load existing draft from backend
   const loadDraftFromBackend = async () => {
     try {
-      // If no employee selected, don't load
-      if (!employee && !employeeId) return;
+      if (!employeeId) return null;
       
-      const queryEmployeeId = employeeId || localStorage.getItem("selectedEmployeeId");
-      if (!queryEmployeeId) return;
+      console.log("Loading draft for employee:", employeeId);
       
-      const response = await axios.get(`${API_BASE}?employeeId=${queryEmployeeId}&status=draft`);
-      if (response.data.success && response.data.data.length > 0) {
+      const response = await axios.get(`${API_BASE}/employee/${employeeId}`, {
+        params: { status: 'draft' }
+      });
+      
+      if (response.data.success && response.data.data && response.data.data.length > 0) {
         const draft = response.data.data[0];
-        setRows(draft.ratings || []);
-        setCards(draft.feedbackCards || []);
-        console.log("Loaded draft from backend:", draft);
+        
+        // VERIFY the draft actually exists by checking it has an _id
+        if (!draft._id) {
+          console.log("Draft has no ID, treating as new");
+          setCurrentAppraisalId("");
+          setRows([]);
+          setCards([]);
+          return null;
+        }
+        
+        setCurrentAppraisalId(draft._id);
+        
+        // Ensure we have arrays
+        const draftRatings = Array.isArray(draft.ratings) ? draft.ratings : [];
+        const draftFeedbackCards = Array.isArray(draft.feedbackCards) ? draft.feedbackCards : [];
+        
+        // Update state with draft data
+        setRows(draftRatings);
+        setCards(draftFeedbackCards);
+        
+        console.log("Loaded draft from backend:", {
+          id: draft._id,
+          ratingsCount: draftRatings.length,
+          feedbackCardsCount: draftFeedbackCards.length
+        });
+        return draft;
+      } else {
+        console.log("No draft found for employee:", employeeId);
+        setCurrentAppraisalId("");
+        setRows([]);
+        setCards([]);
+        return null;
       }
     } catch (error) {
-      console.log("No draft found or error loading:", error);
+      console.error("Error loading draft:", error);
+      
+      // If it's a 404, clear the current ID
+      if (error.response?.status === 404) {
+        setCurrentAppraisalId("");
+      }
+      
+      setSaveStatus({
+        message: "Failed to load draft data",
+        type: "error"
+      });
+      
+      setRows([]);
+      setCards([]);
+      return null;
     }
   };
 
-  // Save draft to backend
-  const saveDraftToBackend = async () => {
-    try {
-      // Check if employee is selected
-      if (!employee || !employeeId) {
-        alert("Please select an employee first!");
-        return false;
-      }
+  // Save draft to backend - FIXED VERSION
+  const saveDraftToBackend = async (action = "auto-save") => {
+    if (!employee || !employeeId) {
+      console.log("Cannot save: No employee selected");
+      return false;
+    }
 
-      // Format data correctly for backend
-      const formattedRatings = rows.map(row => ({
-        criteria: row.criteria,
+    setIsSaving(true);
+    setSaveStatus({ message: "Saving...", type: "info" });
+
+    try {
+      console.log(`Saving draft (${action}) for employee:`, employeeId);
+      console.log("Current appraisal ID:", currentAppraisalId);
+      console.log("Current rows:", rows);
+      console.log("Current cards:", cards);
+
+      // Validate and format data
+      const formattedRatings = rows.map((row, index) => ({
+        criteria: String(row.criteria || "").trim(),
         weightage: parseFloat(row.weightage) || 0,
         rating: parseFloat(row.rating) || 0
       }));
 
       const formattedFeedbackCards = cards.map(card => ({
-        feedback: card.feedback,
-        development: card.development || "",
-        strengths: card.strengths || "",
+        feedback: String(card.feedback || "").trim(),
+        development: String(card.development || "").trim(),
+        strengths: String(card.strengths || "").trim(),
         rating: parseInt(card.rating) || 0
       }));
 
+      // Prepare complete data
       const appraisalData = {
-        userId: employeeId, // Use employeeId as userId
+        userId: employeeId,
         userName: employee,
         employeeId: employeeId,
-        appraisalPeriod: `${new Date().getFullYear()}-Q${Math.floor(new Date().getMonth() / 3) + 1}`,
+        appraisalPeriod: getCurrentAppraisalPeriod(),
         ratings: formattedRatings,
         feedbackCards: formattedFeedbackCards,
         status: "draft"
       };
 
-      console.log("Saving draft to backend:", appraisalData);
+      console.log("Sending to backend:", appraisalData);
 
-      // Check if draft exists
-      const checkResponse = await axios.get(`${API_BASE}?employeeId=${employeeId}&status=draft`);
+      let response;
+      let success = false;
       
-      if (checkResponse.data.success && checkResponse.data.data.length > 0) {
-        // Update existing draft
-        const draftId = checkResponse.data.data[0]._id;
-        const response = await axios.put(`${API_BASE}/${draftId}`, appraisalData);
-        console.log("Draft updated in backend:", response.data);
-        return response.data.success;
+      // FIRST, check if the ID actually exists by trying to fetch it
+      let shouldCreateNew = true;
+      
+      if (currentAppraisalId) {
+        try {
+          // Try to fetch the existing appraisal to see if it exists
+          const checkResponse = await axios.get(`${API_BASE}/${currentAppraisalId}`);
+          if (checkResponse.data.success) {
+            shouldCreateNew = false; // ID exists, we can update
+          }
+        } catch (checkError) {
+          // If we get 404 or any error, the ID doesn't exist
+          console.log("ID doesn't exist or error checking:", checkError);
+          setCurrentAppraisalId(""); // Clear the invalid ID
+        }
+      }
+      
+      if (shouldCreateNew || !currentAppraisalId) {
+        // CREATE new draft
+        console.log("Creating NEW draft");
+        response = await axios.post(API_BASE, appraisalData);
+        success = response.data.success;
+        if (success && response.data.data?._id) {
+          setCurrentAppraisalId(response.data.data._id);
+          console.log("New draft created:", response.data);
+        }
       } else {
-        // Create new draft
-        const response = await axios.post(API_BASE, appraisalData);
-        console.log("New draft created in backend:", response.data);
-        return response.data.success;
+        // UPDATE existing draft
+        console.log("UPDATING existing draft with ID:", currentAppraisalId);
+        response = await axios.put(`${API_BASE}/${currentAppraisalId}`, appraisalData);
+        success = response.data.success;
+        console.log("Draft updated:", response.data);
+      }
+
+      if (success) {
+        setSaveStatus({
+          message: action === "auto-save" ? "Auto-saved successfully" : "Saved successfully",
+          type: "success"
+        });
+        
+        // Clear success message after 3 seconds
+        setTimeout(() => {
+          setSaveStatus({ message: "", type: "" });
+        }, 3000);
+        
+        return true;
+      } else {
+        throw new Error(response.data.error || "Save failed");
       }
     } catch (error) {
       console.error("Error saving draft:", error);
-      console.error("Error response:", error.response?.data);
+      
+      let errorMessage = "Failed to save data";
+      if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      // If it's a 404, clear the ID and try to create new on next save
+      if (error.response?.status === 404) {
+        setCurrentAppraisalId("");
+        errorMessage = "Draft not found. Creating new one...";
+      }
+      
+      setSaveStatus({
+        message: errorMessage,
+        type: "error"
+      });
+      
       return false;
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const addRow = () => {
+  // Debounced auto-save
+  const debouncedSave = useCallback(
+    debounce(async () => {
+      if (rows.length > 0 || cards.length > 0) {
+        await saveDraftToBackend("auto-save");
+      }
+    }, 1000),
+    [rows, cards, employee, employeeId, currentAppraisalId]
+  );
+
+  // Auto-save when rows or cards change
+  useEffect(() => {
+    if (employeeId && (rows.length > 0 || cards.length > 0)) {
+      debouncedSave();
+    }
+  }, [rows, cards, employeeId, debouncedSave]);
+
+  // Add row with better validation
+  const addRow = async () => {
     if (!employee || !employeeId) {
       alert("Please select an employee first!");
       return;
@@ -272,14 +397,14 @@ export default function SelfAppraisal() {
     }
     
     const weightage = parseFloat(newRow.weightage);
-    const rating = parseFloat(newRow.rating);
+    const ratingValue = parseFloat(newRow.rating);
     
     if (isNaN(weightage) || weightage < 0 || weightage > 100) {
       alert("Weightage must be a number between 0 and 100!");
       return;
     }
     
-    if (isNaN(rating) || rating < 1 || rating > 5) {
+    if (isNaN(ratingValue) || ratingValue < 1 || ratingValue > 5) {
       alert("Rating must be a number between 1 and 5!");
       return;
     }
@@ -288,33 +413,80 @@ export default function SelfAppraisal() {
       id: Date.now(),
       criteria: newRow.criteria,
       weightage: weightage,
-      rating: rating,
+      rating: ratingValue,
     };
 
-    const updatedRows = [...rows, newRowObj];
-    
-    setRows(updatedRows);
+    // Update state immediately
+    setRows(prevRows => [...prevRows, newRowObj]);
     setNewRow({ criteria: "", weightage: "", rating: "" });
     
-    // Auto-save to backend
-    saveDraftToBackend();
+    // Manual save with feedback
+    const saved = await saveDraftToBackend("add-row");
     
-    // Show success alert
-    alert("Rating row added successfully!");
+    if (saved) {
+      console.log("Row added and saved successfully");
+    } else {
+      // Revert if save failed
+      setRows(prevRows => prevRows.slice(0, -1));
+      alert("Failed to save rating. Please try again.");
+    }
+  };
+
+  // Delete row
+  const deleteRow = async (index) => {
+    if (!employee || !employeeId) {
+      alert("Please select an employee first!");
+      return;
+    }
+    
+    const updatedRows = rows.filter((_, i) => i !== index);
+    setRows(updatedRows);
+    
+    // Save after deletion
+    await saveDraftToBackend("delete-row");
+  };
+
+  // Delete feedback card
+  const deleteFeedbackCard = async (index) => {
+    if (!employee || !employeeId) {
+      alert("Please select an employee first!");
+      return;
+    }
+    
+    const updatedCards = cards.filter((_, i) => i !== index);
+    setCards(updatedCards);
+    
+    // Save after deletion
+    await saveDraftToBackend("delete-feedback");
+  };
+
+  // Reset and create new draft
+  const resetAndCreateNewDraft = async () => {
+    if (!employee || !employeeId) return;
+    
+    const confirmed = window.confirm("Reset draft and create new? This will clear any unsaved changes.");
+    if (!confirmed) return;
+    
+    setCurrentAppraisalId("");
+    setRows([]);
+    setCards([]);
+    
+    // Force a fresh save
+    await saveDraftToBackend("reset-draft");
   };
 
   // Download Excel template for Ratings
   const downloadRatingsTemplate = () => {
     const emptyData = [
       {
-        "Criteria": "",
-        "Weightage": "",
-        "Rating": ""
+        "Criteria": "Example: Communication Skills",
+        "Weightage": "20",
+        "Rating": "4"
       },
       {
-        "Criteria": "",
-        "Weightage": "",
-        "Rating": ""
+        "Criteria": "Example: Teamwork",
+        "Weightage": "30",
+        "Rating": "5"
       }
     ];
 
@@ -336,16 +508,10 @@ export default function SelfAppraisal() {
   const downloadFeedbackTemplate = () => {
     const emptyData = [
       {
-        "Feedback": "",
-        "Development": "",
-        "Strengths": "",
-        "Rating": ""
-      },
-      {
-        "Feedback": "",
-        "Development": "",
-        "Strengths": "",
-        "Rating": ""
+        "Feedback": "Excellent communication skills",
+        "Development": "Could improve presentation skills",
+        "Strengths": "Team player, always helpful",
+        "Rating": "4"
       }
     ];
 
@@ -364,9 +530,14 @@ export default function SelfAppraisal() {
     XLSX.writeFile(workbook, "Feedback_Template.xlsx");
   };
 
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    if (!employee || !employeeId) {
+      alert("Please select an employee first!");
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -381,48 +552,55 @@ export default function SelfAppraisal() {
           const hasCriteria = firstRow["Criteria"] !== undefined || firstRow["criteria"] !== undefined;
           const hasFeedback = firstRow["Feedback"] !== undefined || firstRow["feedback"] !== undefined;
 
+          let newItems = [];
+          let itemType = "";
+
           if (hasCriteria) {
-            const newRows = jsonData.map((row, index) => {
+            newItems = jsonData.map((row, index) => {
               const criteria = row["Criteria"] || row["criteria"] || "";
               const weightage = parseFloat(row["Weightage"] || row["weightage"] || 0);
-              const rating = parseFloat(row["Rating"] || row["rating"] || 0);
+              const ratingValue = parseFloat(row["Rating"] || row["rating"] || 0);
 
               return {
                 id: Date.now() + index,
                 criteria: criteria.toString(),
                 weightage: weightage,
-                rating: rating,
+                rating: ratingValue,
               };
             }).filter(row => row.criteria && !isNaN(row.weightage) && !isNaN(row.rating));
-
-            setRows((prev) => [...prev, ...newRows]);
             
-            await saveDraftToBackend();
-            
-            alert(`${newRows.length} rating rows uploaded successfully!`);
+            itemType = "rating";
+            setRows(prev => [...prev, ...newItems]);
           } else if (hasFeedback) {
-            const newCards = jsonData.map((row, index) => {
+            newItems = jsonData.map((row, index) => {
               const feedback = row["Feedback"] || row["feedback"] || "";
               const development = row["Development"] || row["development"] || row["Areas of Development"] || "";
               const strengths = row["Strengths"] || row["strengths"] || row["Key Strengths"] || "";
-              const rating = parseInt(row["Rating"] || row["rating"] || 0);
+              const ratingValue = parseInt(row["Rating"] || row["rating"] || 0);
 
               return {
                 id: Date.now() + index,
                 feedback: feedback.toString(),
                 development: development.toString(),
                 strengths: strengths.toString(),
-                rating: rating,
+                rating: ratingValue,
               };
             }).filter(card => card.feedback && !isNaN(card.rating));
-
-            setCards((prev) => [...prev, ...newCards]);
             
-            await saveDraftToBackend();
-            
-            alert(`${newCards.length} feedback entries uploaded successfully!`);
+            itemType = "feedback";
+            setCards(prev => [...prev, ...newItems]);
           } else {
             alert("File format not recognized. Please use the provided templates.");
+            return;
+          }
+
+          // Save to backend
+          const saved = await saveDraftToBackend("upload-file");
+          
+          if (saved) {
+            alert(`${newItems.length} ${itemType} ${newItems.length === 1 ? 'entry' : 'entries'} uploaded successfully!`);
+          } else {
+            alert("Uploaded but failed to save. Please try again.");
           }
         }
       } catch (error) {
@@ -452,16 +630,23 @@ export default function SelfAppraisal() {
       rating: rating,
     };
 
-    setCards((prev) => [...prev, newCard]);
+    // Update state immediately
+    setCards(prev => [...prev, newCard]);
     
-    await saveDraftToBackend();
+    // Save to backend
+    const saved = await saveDraftToBackend("add-feedback");
     
-    alert("Feedback added successfully!");
-    
-    setFeedback("");
-    setDevelopment("");
-    setStrengths("");
-    setRating(0);
+    if (saved) {
+      // Clear form on success
+      setFeedback("");
+      setDevelopment("");
+      setStrengths("");
+      setRating(0);
+    } else {
+      // Revert if save failed
+      setCards(prev => prev.slice(0, -1));
+      alert("Failed to save feedback. Please try again.");
+    }
   };
 
   const handleSubmitAll = async () => {
@@ -481,6 +666,11 @@ export default function SelfAppraisal() {
       return;
     }
 
+    if (!window.confirm("Are you sure you want to submit this appraisal? This action cannot be undone.")) {
+      return;
+    }
+
+    setIsSaving(true);
     try {
       const formattedRatings = rows.map(row => ({
         criteria: row.criteria,
@@ -499,83 +689,80 @@ export default function SelfAppraisal() {
         userId: employeeId,
         userName: employee,
         employeeId: employeeId,
-        appraisalPeriod: `${new Date().getFullYear()}-Q${Math.floor(new Date().getMonth() / 3) + 1}`,
+        appraisalPeriod: getCurrentAppraisalPeriod(),
         ratings: formattedRatings,
         feedbackCards: formattedFeedbackCards,
-        status: "submitted"
+        status: "submitted",
+        submittedAt: new Date().toISOString()
       };
 
-      console.log("Submitting to backend:", appraisalData);
+      console.log("Submitting final appraisal:", appraisalData);
 
       let response;
       
-      try {
-        const checkResponse = await axios.get(`${API_BASE}?employeeId=${employeeId}&status=draft`);
+      if (currentAppraisalId) {
+        // Update existing draft and submit
+        response = await axios.put(`${API_BASE}/${currentAppraisalId}`, appraisalData);
+        console.log("Update response:", response.data);
         
-        if (checkResponse.data.success && checkResponse.data.data.length > 0) {
-          const draftId = checkResponse.data.data[0]._id;
-          console.log("Updating existing draft:", draftId);
+        if (response.data.success) {
+          const submitResponse = await axios.post(`${API_BASE}/${currentAppraisalId}/submit`);
+          console.log("Submit response:", submitResponse.data);
           
-          response = await axios.put(`${API_BASE}/${draftId}`, appraisalData);
-          console.log("Update response:", response.data);
-          
-          if (response.data.success) {
-            const submitResponse = await axios.post(`${API_BASE}/${draftId}/submit`);
-            console.log("Submit response:", submitResponse.data);
+          if (submitResponse.data.success) {
+            // Clear all data
+            setRows([]);
+            setCards([]);
+            setCurrentAppraisalId("");
+            setEmployee("");
+            setEmployeeId("");
+            setSearchTerm("");
+            localStorage.removeItem("selectedEmployee");
+            localStorage.removeItem("selectedEmployeeId");
             
-            if (submitResponse.data.success) {
-              setRows([]);
-              setCards([]);
-              
-              localStorage.setItem("selfAppraisalData", JSON.stringify({
-                ratings: rows,
-                feedbackCards: cards
-              }));
-              
-              alert("Self Appraisal submitted successfully to backend!");
-              return;
-            }
-          }
-        } else {
-          console.log("Creating new appraisal");
-          const createResponse = await axios.post(API_BASE, appraisalData);
-          console.log("Create response:", createResponse.data);
-          
-          if (createResponse.data.success && createResponse.data.data?._id) {
-            const newAppraisalId = createResponse.data.data._id;
-            
-            const submitResponse = await axios.post(`${API_BASE}/${newAppraisalId}/submit`);
-            console.log("Submit response:", submitResponse.data);
-            
-            if (submitResponse.data.success) {
-              setRows([]);
-              setCards([]);
-              
-              localStorage.setItem("selfAppraisalData", JSON.stringify({
-                ratings: rows,
-                feedbackCards: cards
-              }));
-              
-              alert("Self Appraisal submitted successfully to backend!");
-              return;
-            }
+            alert("Self Appraisal submitted successfully!");
+            return;
           }
         }
-      } catch (backendError) {
-        console.error("Backend error:", backendError.response?.data || backendError.message);
-        throw backendError;
+      } else {
+        // Create new and submit
+        response = await axios.post(API_BASE, appraisalData);
+        console.log("Create response:", response.data);
+        
+        if (response.data.success && response.data.data?._id) {
+          const newAppraisalId = response.data.data._id;
+          const submitResponse = await axios.post(`${API_BASE}/${newAppraisalId}/submit`);
+          console.log("Submit response:", submitResponse.data);
+          
+          if (submitResponse.data.success) {
+            // Clear all data
+            setRows([]);
+            setCards([]);
+            setCurrentAppraisalId("");
+            setEmployee("");
+            setEmployeeId("");
+            setSearchTerm("");
+            localStorage.removeItem("selectedEmployee");
+            localStorage.removeItem("selectedEmployeeId");
+            
+            alert("Self Appraisal submitted successfully!");
+            return;
+          }
+        }
       }
       
+      throw new Error("Submission failed");
     } catch (error) {
-      console.error("Error submitting to backend:", error);
+      console.error("Error submitting appraisal:", error);
       
-      const localStorageData = {
-        ratings: rows,
-        feedbackCards: cards,
-      };
+      let errorMessage = "Submission failed";
+      if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
       
-      localStorage.setItem("selfAppraisalData", JSON.stringify(localStorageData));
-      alert("Backend submission failed! Data saved to localStorage as backup.");
+      alert(`Error: ${errorMessage}`);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -586,6 +773,23 @@ export default function SelfAppraisal() {
   return (
     <div className="p-3" style={{ fontFamily: "Inter, sans-serif" }}>
       <h4 className="fw-bold mb-4">Self Appraisal Form</h4>
+
+      {/* Save Status */}
+      {saveStatus.message && (
+        <div className={`alert alert-${saveStatus.type === "error" ? "danger" : saveStatus.type === "success" ? "success" : "info"} d-flex align-items-center justify-content-between mb-4`}>
+          <div className="d-flex align-items-center">
+            {saveStatus.type === "error" && <FaExclamationTriangle className="me-2" />}
+            {saveStatus.type === "success" && <FaSave className="me-2" />}
+            {saveStatus.type === "info" && <FaSpinner className="fa-spin me-2" />}
+            <span>{saveStatus.message}</span>
+          </div>
+          <button 
+            type="button" 
+            className="btn-close" 
+            onClick={() => setSaveStatus({ message: "", type: "" })}
+          />
+        </div>
+      )}
 
       {/* Employee Search Section */}
       <div className="border rounded p-4 bg-light mb-4">
@@ -737,11 +941,33 @@ export default function SelfAppraisal() {
                   <div>
                     <span className="fw-medium">{employee}</span>
                     <small className="text-muted ms-2">({employeeId})</small>
+                    {currentAppraisalId ? (
+                      <div>
+                        <small className="d-block text-success mt-1">
+                          Draft loaded ({rows.length} ratings, {cards.length} feedback)
+                          {isSaving && <FaSpinner className="fa-spin ms-2" />}
+                        </small>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-warning mt-1"
+                          onClick={resetAndCreateNewDraft}
+                          disabled={isSaving}
+                        >
+                          <FaRedo className="me-1" />
+                          Reset Draft
+                        </button>
+                      </div>
+                    ) : (
+                      <small className="d-block text-info mt-1">
+                        No draft found. New one will be created on save.
+                      </small>
+                    )}
                   </div>
                   <button
                     type="button"
                     className="btn btn-sm btn-outline-danger"
                     onClick={clearEmployeeSelection}
+                    disabled={isSaving}
                   >
                     Clear
                   </button>
@@ -763,6 +989,11 @@ export default function SelfAppraisal() {
                 : `❌ Must be exactly 100%`}
             </span>
           </div>
+          <div>
+            <small className="text-muted">
+              Total Ratings: {rows.length} | Total Feedback: {cards.length}
+            </small>
+          </div>
         </div>
       )}
 
@@ -770,6 +1001,9 @@ export default function SelfAppraisal() {
       <div className="mb-5">
         <h5 className="fw-bold mb-3">Ratings</h5>
 
+       
+
+        {/* Add new row form */}
         <div className="border rounded bg-white mb-3">
           <table className="table mb-0" style={{ fontSize: "14px" }}>
             <thead style={{ background: "#f7f7f7" }}>
@@ -780,7 +1014,6 @@ export default function SelfAppraisal() {
                 <th>Rating</th>
               </tr>
             </thead>
-
             <tbody>
               <tr style={{ background: "#f9f9f9" }}>
                 <td>{rows.length + 1}</td>
@@ -791,7 +1024,7 @@ export default function SelfAppraisal() {
                     value={newRow.criteria}
                     onChange={(e) => setNewRow({...newRow, criteria: e.target.value})}
                     placeholder="Enter criteria"
-                    disabled={!employee}
+                    disabled={!employee || isSaving}
                   />
                 </td>
                 <td>
@@ -804,7 +1037,7 @@ export default function SelfAppraisal() {
                     step="0.1"
                     min="0"
                     max="100"
-                    disabled={!employee}
+                    disabled={!employee || isSaving}
                   />
                 </td>
                 <td>
@@ -817,7 +1050,7 @@ export default function SelfAppraisal() {
                     value={newRow.rating}
                     onChange={(e) => setNewRow({...newRow, rating: e.target.value})}
                     placeholder="1-5"
-                    disabled={!employee}
+                    disabled={!employee || isSaving}
                   />
                 </td>
               </tr>
@@ -829,8 +1062,9 @@ export default function SelfAppraisal() {
           <button 
             className="btn btn-primary" 
             onClick={addRow}
-            disabled={!employee}
+            disabled={!employee || isSaving}
           >
+            {isSaving ? <FaSpinner className="fa-spin me-2" /> : null}
             Add Row
           </button>
           
@@ -839,7 +1073,7 @@ export default function SelfAppraisal() {
             className="btn btn-outline-primary d-flex align-items-center gap-2"
             onClick={downloadRatingsTemplate}
             title="Download Ratings Excel Template"
-            disabled={!employee}
+            disabled={!employee || isSaving}
           >
             <FaFileExcel />
             <span>Download Ratings Template</span>
@@ -851,6 +1085,8 @@ export default function SelfAppraisal() {
       <div className="mb-5">
         <h5 className="fw-bold mb-4">Feedback</h5>
 
+       
+        {/* Add new feedback form */}
         <div className="border rounded p-4 bg-light mb-4">
           <div className="row g-3">
             <div className="col-md-12">
@@ -861,7 +1097,7 @@ export default function SelfAppraisal() {
                 className="form-control"
                 rows={3}
                 placeholder="Enter feedback..."
-                disabled={!employee}
+                disabled={!employee || isSaving}
               />
             </div>
 
@@ -873,7 +1109,7 @@ export default function SelfAppraisal() {
                 className="form-control"
                 rows={3}
                 placeholder="Enter areas for development or next steps..."
-                disabled={!employee}
+                disabled={!employee || isSaving}
               />
             </div>
 
@@ -885,7 +1121,7 @@ export default function SelfAppraisal() {
                 className="form-control"
                 rows={3}
                 placeholder="Enter key strengths or achievements..."
-                disabled={!employee}
+                disabled={!employee || isSaving}
               />
             </div>
 
@@ -895,10 +1131,10 @@ export default function SelfAppraisal() {
                 {[1, 2, 3, 4, 5].map((star) => (
                   <span
                     key={star}
-                    onClick={() => !employee ? null : setRating(star)}
+                    onClick={() => !employee || isSaving ? null : setRating(star)}
                     style={{
                       fontSize: "28px",
-                      cursor: employee ? "pointer" : "not-allowed",
+                      cursor: employee && !isSaving ? "pointer" : "not-allowed",
                       color: rating >= star ? "#FFD700" : "#d1d8dd",
                       marginRight: 6,
                       opacity: employee ? 1 : 0.6
@@ -921,7 +1157,7 @@ export default function SelfAppraisal() {
                     className="btn btn-outline-primary d-flex align-items-center gap-2"
                     onClick={downloadFeedbackTemplate}
                     title="Download Feedback Excel Template"
-                    disabled={!employee}
+                    disabled={!employee || isSaving}
                   >
                     <FaFileExcel />
                     <span>Download Feedback Template</span>
@@ -934,13 +1170,13 @@ export default function SelfAppraisal() {
                       accept=".xlsx, .xls, .csv"
                       onChange={handleFileUpload}
                       className="d-none"
-                      disabled={!employee}
+                      disabled={!employee || isSaving}
                     />
                     <label
                       htmlFor="fileUpload"
                       className="btn btn-primary d-flex align-items-center gap-2"
                       style={{ 
-                        cursor: employee ? "pointer" : "not-allowed",
+                        cursor: employee && !isSaving ? "pointer" : "not-allowed",
                         opacity: employee ? 1 : 0.6
                       }}
                       title="Upload Excel File"
@@ -954,9 +1190,9 @@ export default function SelfAppraisal() {
                 <button 
                   className="btn btn-success d-flex align-items-center gap-2" 
                   onClick={handleSubmitFeedback}
-                  disabled={!employee}
+                  disabled={!employee || !feedback || rating === 0 || isSaving}
                 >
-                  <FaSave />
+                  {isSaving ? <FaSpinner className="fa-spin me-2" /> : <FaSave />}
                   <span>Add Feedback</span>
                 </button>
               </div>
@@ -965,17 +1201,44 @@ export default function SelfAppraisal() {
         </div>
       </div>
 
-      {/* Submit All Button */}
-      <div className="d-flex justify-content-end mt-4">
-        <button 
-          className="btn btn-success btn-lg px-5 d-flex align-items-center gap-2" 
-          onClick={handleSubmitAll}
-          disabled={!employee || rows.length === 0 || Math.abs(calculateTotalWeightage() - 100) > 0.01}
-        >
-          <FaSave />
-          <span>Submit Appraisal</span>
-        </button>
-      </div>
+      {/*Submit All Button
+      <div className="d-flex justify-content-between align-items-center mt-4 p-3 border rounded bg-light">
+        <div>
+          <button 
+            className="btn btn-outline-primary d-flex align-items-center gap-2"
+            onClick={() => saveDraftToBackend("manual-save")}
+            disabled={!employee || isSaving}
+          >
+            {isSaving ? <FaSpinner className="fa-spin me-2" /> : <FaSave />}
+            <span>Save Draft</span>
+          </button>
+        </div>
+        <div>
+          <button 
+            className="btn btn-success btn-lg px-5 d-flex align-items-center gap-2" 
+            onClick={handleSubmitAll}
+            disabled={!employee || rows.length === 0 || Math.abs(calculateTotalWeightage() - 100) > 0.01 || isSaving}
+          >
+            {isSaving ? <FaSpinner className="fa-spin me-2" /> : <FaSave />}
+            <span>Submit Appraisal</span>
+          </button>
+        </div>
+      </div>*/}
+
+     
     </div>
   );
+}
+
+// Debounce utility function
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
 }

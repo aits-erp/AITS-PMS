@@ -32,6 +32,7 @@ export default function Mnavigation({ user, onLogout }) {
   // Master Pages (for creating/adding data)
   const masterPages = [
     { id: "Dashboard", name: "Dashboard" },
+	 { id: "EmployeeResignation", name: "New Employee registration" },
     { id: "New", name: "New Appraisal" },
     { id: "New3", name: "Employee Performance Review" },
     { id: "NewGoal", name: "New Goal" },
@@ -40,20 +41,22 @@ export default function Mnavigation({ user, onLogout }) {
     { id: "PipManagement", name: "New PIP Management" },
     { id: "Annualreport", name: "New Annual Report" },
     //{ id: "Employeeonboarding", name: "New Employee Onboarding" },
-    { id: "EmployeeResignation", name: "New Employee Resignation" },
+   
     //{ id: "UserView", name: "New User View" },
   ];
 
   // View Pages (for viewing/editing existing data)
   const viewPages = [
+	{ id: "ViewEmployeeResignation", name: "View Employee registration" },
     { id: "ViewNew", name: "View Appraisals" },
+	
     { id: "ViewNew3", name: "View Performance Reviews" },
     { id: "ViewNewGoal", name: "View Goals" },
     { id: "ViewEmployeePromotion", name: "View Promotions" },
     { id: "ViewPipManagement", name: "View PIP Management" },
     { id: "ViewAnnualReport", name: "View Annual Reports" },
     //{ id: "ViewEmployeeOnboarding", name: "View Employee Onboarding" },
-    { id: "ViewEmployeeResignation", name: "View Employee Resignation" },
+    
     //{ id: "ViewUserView", name: "View User Views" },
 	//{ id: "EmployeeSideData", name: "Employee Side Data" },
 	{ id: "AllEmployeesData", name: " AllEmployeesData" },

@@ -495,12 +495,12 @@ export default function EmployeeResignation({ editingEmployee, onSaveSuccess, on
 
   return (
     <div className="container p-3" style={{ fontFamily: "Inter, sans-serif" }}>
-      <h5 className="fw-bold mb-4">Employee Resignation Management</h5>
+      <h5 className="fw-bold mb-4">Employee registration Management</h5>
 
       <Card className="shadow-sm border-0 mb-4" style={{ borderRadius: "16px" }}>
         <Card.Body className="p-4">
           <h6 className="fw-bold mb-3">
-            {editingEmployee ? "Edit Resignation" : "New Employee Resignation"}
+            {editingEmployee ? "Edit registration" : "New Employee registration"}
           </h6>
           
           <Form onSubmit={handleSubmit}>
