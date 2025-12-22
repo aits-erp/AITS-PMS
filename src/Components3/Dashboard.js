@@ -545,7 +545,7 @@ export default function Dashboard() {
         
         <div className="col-md-4">
           <div className="bg-white shadow-sm rounded p-3">
-            <h5 className="fw-semibold mb-3">Resignation Status</h5>
+            <h5 className="fw-semibold mb-3">Registration Status</h5>
             <div className="row">
               {Object.entries(calculateResignationStatusDistribution()).map(([status, count]) => {
                 let statusColor = "";
