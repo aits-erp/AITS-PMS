@@ -494,7 +494,7 @@ export default function AdminLogin({ onLoginSuccess }) {
               <h1 className="display-4 fw-bold mb-4">P M S</h1>
               <p className="lead mb-4" style={{ fontSize: "1.25rem", opacity: 0.9 }}>
                 {loginType === "employee" 
-                  ? "Employee Resignation & Management Portal"
+                  ? "Employee Registration & Management Portal"
                   : "Admin Dashboard & Company Management"}
               </p>
             </div>
@@ -514,7 +514,7 @@ export default function AdminLogin({ onLoginSuccess }) {
                   </h5>
                   <p className="mb-0" style={{ opacity: 0.9 }}>
                     {loginType === "employee" 
-                      ? "Access your resignation details and profile"
+                      ? "Access your registration details and profile"
                       : "Manage multiple companies with ease"}
                   </p>
                 </div>
@@ -544,11 +544,11 @@ export default function AdminLogin({ onLoginSuccess }) {
                 </div>
                 <div className="text-start">
                   <h5 className="fw-bold mb-1">
-                    {loginType === "employee" ? "Resignation Management" : "Admin Dashboard"}
+                    {loginType === "employee" ? "Registration Management" : "Admin Dashboard"}
                   </h5>
                   <p className="mb-0" style={{ opacity: 0.9 }}>
                     {loginType === "employee" 
-                      ? "Track and manage your resignation status"
+                      ? "Track and manage your registration status"
                       : "Complete control and analytics"}
                   </p>
                 </div>
@@ -592,7 +592,7 @@ export default function AdminLogin({ onLoginSuccess }) {
                  isLogin ? "Welcome Back" : "Create Account"}
               </h2>
               <p className="text-muted mb-0">
-                {loginType === "employee" ? "Access your resignation portal" :
+                {loginType === "employee" ? "Access your registration portal" :
                  isForgotPassword ? "Enter your email to receive OTP" : 
                  isVerifyOTP ? "Enter OTP sent to your email" : 
                  isResetPassword ? "Create a strong new password" :
