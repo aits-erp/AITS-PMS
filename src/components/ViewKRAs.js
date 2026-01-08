@@ -1,20 +1,53 @@
 import React, { useState, useEffect } from "react";
-import { FaWhatsapp, FaEnvelope, FaEdit, FaTrash, FaFileExcel } from "react-icons/fa";
+import { FaWhatsapp, FaEnvelope, FaEdit, FaTrash, FaFileExcel, FaUser } from "react-icons/fa";
 import * as XLSX from "xlsx";
 import axios from "axios";
 
 export default function ViewKRAs({ onEditKRA, refreshTrigger }) {
-  //const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5000/api/kra";
   const API_BASE = `${process.env.REACT_APP_API_BASE}/api/kra`;
+  const EMPLOYEE_API = `${process.env.REACT_APP_API_BASE}/api/employee-resignation`;
+  
   const [kras, setKras] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingRowId, setEditingRowId] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [employees, setEmployees] = useState([]);
+  const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
+  const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
 
   // Load data from backend
   useEffect(() => {
     loadKRAs();
+    fetchEmployees();
   }, [refreshTrigger]);
+
+  const fetchEmployees = async () => {
+    try {
+      const response = await axios.get(`${EMPLOYEE_API}/all-ids`);
+      if (response.data.success) {
+        setEmployees(response.data.data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching employees:", error);
+      // Fallback: try to get employee names
+      try {
+        const response = await axios.get(`${EMPLOYEE_API}/names`);
+        if (response.data.success) {
+          const namesData = response.data.data || [];
+          const formattedEmployees = namesData.map((name, index) => ({
+            employeeId: `EMP-${index + 1000}`,
+            employeeName: name,
+            fullName: name,
+            email: "",
+            status: "Active"
+          }));
+          setEmployees(formattedEmployees);
+        }
+      } catch (fallbackError) {
+        console.error("Fallback error:", fallbackError);
+      }
+    }
+  };
 
   const loadKRAs = async () => {
     try {
@@ -58,14 +91,37 @@ export default function ViewKRAs({ onEditKRA, refreshTrigger }) {
       weightage: kra.weightage || "",
       goalCompletion: kra.goalCompletion || "",
       goalScore: kra.goalScore || "",
+      employee: kra.employee || "",
+      employeeId: kra.employeeId || "",
+      template: kra.template || "",
+      manualRate: kra.manualRate || false
     });
+    setEmployeeSearchTerm(kra.employee ? `${kra.employee} (${kra.employeeId || ''})` : "");
     alert("Edit mode activated. Update the values and click Save.");
   };
 
   const cancelInlineEdit = () => {
     setEditingRowId(null);
     setEditForm({});
+    setEmployeeSearchTerm("");
+    setShowEmployeeDropdown(false);
     alert("Edit cancelled.");
+  };
+
+  const handleEmployeeSearchChange = (value) => {
+    setEmployeeSearchTerm(value);
+    setShowEmployeeDropdown(true);
+    if (!value.trim()) {
+      setEditForm(prev => ({ ...prev, employee: "", employeeId: "" }));
+    }
+  };
+
+  const handleEmployeeSelect = (emp) => {
+    const name = emp.employeeName || emp.fullName || emp.name || "";
+    const id = emp.employeeId || "";
+    setEditForm(prev => ({ ...prev, employee: name, employeeId: id }));
+    setEmployeeSearchTerm(id ? `${name} (${id})` : name);
+    setShowEmployeeDropdown(false);
   };
 
   const handleInlineEditChange = (field, value) => {
@@ -98,6 +154,7 @@ export default function ViewKRAs({ onEditKRA, refreshTrigger }) {
       const response = await axios.put(`${API_BASE}/${editingRowId}`, updatedData);
       if (response.data.success) {
         loadKRAs();
+        setEmployeeSearchTerm("");
         alert("KRA updated successfully!");
       } else {
         alert("Failed to update KRA: " + response.data.error);
@@ -112,6 +169,7 @@ export default function ViewKRAs({ onEditKRA, refreshTrigger }) {
     const text = `
 📊 KRA Details:
 
+Employee: ${kra.employee || "Not assigned"} ${kra.employeeId ? `(${kra.employeeId})` : ''}
 Appraisal Template: ${kra.template || "Not Selected"}
 Rate Manually: ${kra.manualRate ? "Yes" : "No"}
 
@@ -126,10 +184,11 @@ Goal Score: ${kra.goalScore}
   };
 
   const shareEmail = (kra) => {
-    const subject = `KRA Details - ${kra.template || "KRA Report"}`;
+    const subject = `KRA Details - ${kra.employee || kra.template || "KRA Report"}`;
     const body = `
 KRA Details:
 
+Employee: ${kra.employee || "Not assigned"} ${kra.employeeId ? `(${kra.employeeId})` : ''}
 Appraisal Template: ${kra.template || "Not Selected"}
 Rate Manually: ${kra.manualRate ? "Yes" : "No"}
 
@@ -147,6 +206,8 @@ Goal Score: ${kra.goalScore}
     try {
       const ws = XLSX.utils.json_to_sheet(kras.map((kra, i) => ({
         "S.No": i + 1,
+        "Employee": kra.employee || "Not assigned",
+        "Employee ID": kra.employeeId || "",
         "KRA": kra.kra || "",
         "Weightage": kra.weightage || "",
         "Completion": kra.goalCompletion || "",
@@ -154,6 +215,21 @@ Goal Score: ${kra.goalScore}
         "Template": kra.template || "Not Selected",
         "Manual Rate": kra.manualRate ? "Yes" : "No"
       })));
+      
+      // Set column widths
+      const wscols = [
+        { wch: 8 },   // S.No
+        { wch: 25 },  // Employee
+        { wch: 20 },  // Employee ID
+        { wch: 40 },  // KRA
+        { wch: 12 },  // Weightage
+        { wch: 12 },  // Completion
+        { wch: 12 },  // Score
+        { wch: 20 },  // Template
+        { wch: 15 },  // Manual Rate
+      ];
+      ws['!cols'] = wscols;
+      
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "KRAs");
       XLSX.writeFile(wb, "kras_export.xlsx");
@@ -173,6 +249,13 @@ Goal Score: ${kra.goalScore}
     width: "100%",
     padding: "4px 8px",
   };
+
+  const filteredEmployees = employees.filter(emp => {
+    const searchLower = employeeSearchTerm.toLowerCase();
+    const name = emp.employeeName || emp.fullName || emp.name || "";
+    const id = emp.employeeId || "";
+    return name.toLowerCase().includes(searchLower) || id.toLowerCase().includes(searchLower);
+  });
 
   if (loading) {
     return (
@@ -222,18 +305,62 @@ Goal Score: ${kra.goalScore}
               <thead className="table-light">
                 <tr>
                   <th width="5%">No</th>
-                  <th width="25%">Template</th>
-                  <th width="30%">KRA</th>
-                  <th width="10%">Weightage</th>
-                  <th width="10%">Completion</th>
-                  <th width="10%">Score</th>
-                  <th width="10%">Actions</th>
+                  <th width="20%">Employee</th>
+                  <th width="20%">Template</th>
+                  <th width="25%">KRA</th>
+                  <th width="8%">Weightage</th>
+                  <th width="8%">Completion</th>
+                  <th width="8%">Score</th>
+                  <th width="6%">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {kras.map((kra, index) => (
                   <tr key={kra._id}>
                     <td>{index + 1}</td>
+                    <td>
+                      {editingRowId === kra._id ? (
+                        <div className="position-relative">
+                          <input
+                            type="text"
+                            value={employeeSearchTerm}
+                            onChange={(e) => handleEmployeeSearchChange(e.target.value)}
+                            style={inputStyle}
+                            placeholder="Search employee..."
+                            className="form-control"
+                          />
+                          {showEmployeeDropdown && (
+                            <div className="position-absolute bg-white border rounded mt-1 shadow-lg"
+                                 style={{ zIndex: 1000, width: '100%', maxHeight: '200px', overflowY: 'auto' }}>
+                              {filteredEmployees.map((emp, idx) => (
+                                <div
+                                  key={idx}
+                                  className="dropdown-item py-2 px-3"
+                                  onClick={() => handleEmployeeSelect(emp)}
+                                  style={{ cursor: 'pointer' }}
+                                >
+                                  <div className="d-flex align-items-center">
+                                    <FaUser className="me-2 text-primary" size={14} />
+                                    <div>
+                                      <div className="fw-medium">{emp.employeeName || emp.fullName || emp.name}</div>
+                                      {emp.employeeId && <small className="text-muted">{emp.employeeId}</small>}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                              {filteredEmployees.length === 0 && (
+                                <div className="p-2 text-muted text-center">No employees found</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="fw-medium">{kra.employee || "Not assigned"}</div>
+                          {kra.employeeId && <small className="text-muted">{kra.employeeId}</small>}
+                        </div>
+                      )}
+                    </td>
                     <td>{kra.template || "Not Selected"}</td>
                     <td>
                       {editingRowId === kra._id ? (
