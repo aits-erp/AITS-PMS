@@ -318,173 +318,577 @@ export default function EmployeeResignation({ editingEmployee, onSaveSuccess, on
   };
 
   // Excel Download Template (updated to include new fields)
-  const downloadExcelTemplate = () => {
-    const emptyData = [
-      {
-        "Full Name*": "",
-        "Birth Date* (YYYY-MM-DD)": "",
-        "Email*": "",
-        "Work Email*": "",
-        "Phone* (10 digits)": "",
-        "Emergency Contact* (10 digits)": "",
-        "Hire Date* (YYYY-MM-DD)": "",
-        "Department*": "",
-        "Reporting Manager*": "",
-        "Added On* (YYYY-MM-DD)": "",
-        "Address*": "",
-        "Current Address*": "",
-        "Pincode* (6 digits)": "",
-        "State*": "",
-        "City*": "",
-        "PAN No* (ABCDE1234F)": "",
-        "Password* (min 6 characters)": "",
-      },
-    ];
+ const downloadExcelTemplate = () => {
+  const emptyData = [
+    {
+      "Full Name*": "",
+      "Birth Date* (YYYY-MM-DD)": "",
+      "Email*": "",
+      "Work Email*": "",
+      "Phone* (10 digits)": "",
+      "Emergency Contact* (10 digits)": "",
+      "Hire Date* (YYYY-MM-DD)": "",
+      "Department*": "",
+      "Reporting Manager*": "",
+      "Added On* (YYYY-MM-DD)": "",
+      "Address*": "",
+      "Current Address*": "",
+      "Pincode* (6 digits)": "",
+      "State*": "",
+      "City*": "",
+      "PAN No* (ABCDE1234F)": "",
+      "Password* (min 6 characters)": "",
+      "Confirm Password* (min 6 characters)": "", // ADDED confirmPassword column
+    },
+  ];
 
-    const worksheet = XLSX.utils.json_to_sheet(emptyData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Resignation Template");
-    XLSX.writeFile(workbook, "Employee_Resignation_Template.xlsx");
-  };
+  const worksheet = XLSX.utils.json_to_sheet(emptyData);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Resignation Template");
+  XLSX.writeFile(workbook, "Employee_Resignation_Template.xlsx");
+};
 
   // Excel Upload (updated to handle new fields)
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+// Excel Upload (updated to handle new fields)
+// Excel Upload - FIXED version
+// Excel Upload - FIXED with better validation
+const handleFileUpload = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
 
-    // Check file type
-    const validExtensions = ['.xlsx', '.xls', '.csv'];
-    const fileExtension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
-    
-    if (!validExtensions.includes(fileExtension)) {
-      alert("Please upload only Excel or CSV files");
-      e.target.value = '';
-      return;
-    }
+  // Check file type
+  const validExtensions = ['.xlsx', '.xls', '.csv'];
+  const fileExtension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+  
+  if (!validExtensions.includes(fileExtension)) {
+    alert("Please upload only Excel or CSV files");
+    e.target.value = '';
+    return;
+  }
 
-    // Check file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      alert("File size should be less than 5MB");
-      e.target.value = '';
-      return;
-    }
+  // Check file size (max 5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    alert("File size should be less than 5MB");
+    e.target.value = '';
+    return;
+  }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const workbook = XLSX.read(event.target.result, { type: "array" });
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+  const reader = new FileReader();
+  
+  reader.onload = async (event) => {
+    try {
+      const workbook = XLSX.read(event.target.result, { type: "array" });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-        if (jsonData.length > 0) {
-          const row = jsonData[0];
-          const tempErrors = {};
+      if (jsonData.length === 0) {
+        alert("No data found in the Excel file.");
+        return;
+      }
+
+      console.log(`Found ${jsonData.length} rows in Excel file`);
+      console.log("First row sample:", jsonData[0]);
+
+      // 🔧 IMPROVED: Better field extraction with fallbacks
+      const extractField = (row, possibleKeys) => {
+        for (const key of possibleKeys) {
+          if (row[key] !== undefined && row[key] !== null && row[key] !== '') {
+            return String(row[key]).trim();
+          }
+        }
+        return '';
+      };
+
+      // Helper function to parse dates - MORE FLEXIBLE
+      const parseDate = (dateStr) => {
+        if (!dateStr) return '';
+        
+        const dateStrTrimmed = String(dateStr).trim();
+        if (!dateStrTrimmed) return '';
+        
+        console.log(`Parsing date: "${dateStrTrimmed}"`);
+        
+        // Try different date formats
+        try {
+          // 1. Already in YYYY-MM-DD format
+          if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateStrTrimmed)) {
+            const [year, month, day] = dateStrTrimmed.split('-');
+            return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+          }
           
-          // Map Excel columns to form fields
-          const newFormData = {
-            fullName: row["Full Name*"] || row["Full Name"] || row["FullName"] || row["fullName"] || "",
-            birthDate: row["Birth Date* (YYYY-MM-DD)"] || row["Birth Date"] || row["BirthDate"] || row["birthDate"] || "",
-            email: row["Email*"] || row["Email"] || row["email"] || "",
-            workEmail: row["Work Email*"] || row["Work Email"] || row["workEmail"] || row["WorkEmail"] || "",
-            phone: row["Phone* (10 digits)"] || row["Phone"] || row["phone"] || "",
-            emergencyContact: row["Emergency Contact* (10 digits)"] || row["Emergency Contact"] || row["emergencyContact"] || row["EmergencyContact"] || "",
-            hireDate: row["Hire Date* (YYYY-MM-DD)"] || row["Hire Date"] || row["HireDate"] || row["hireDate"] || "",
-            department: row["Department*"] || row["Department"] || row["department"] || "",
-            reportingManager: row["Reporting Manager*"] || row["Reporting Manager"] || row["reportingManager"] || row["ReportingManager"] || "",
-            addedOn: row["Added On* (YYYY-MM-DD)"] || new Date().toISOString().split('T')[0],
-            address: row["Address*"] || row["Address"] || row["address"] || "",
-            currentAddress: row["Current Address*"] || row["Current Address"] || row["currentAddress"] || row["CurrentAddress"] || "",
-            pincode: row["Pincode* (6 digits)"] || row["Pincode"] || row["pincode"] || "",
-            state: row["State*"] || row["State"] || row["state"] || "",
-            city: row["City*"] || row["City"] || row["city"] || "",
-            panNo: row["PAN No* (ABCDE1234F)"] || row["PAN No"] || row["PAN"] || row["panNo"] || row["pan"] || "",
-            password: row["Password* (min 6 characters)"] || row["Password"] || row["password"] || "",
-            confirmPassword: row["Password* (min 6 characters)"] || row["Password"] || row["password"] || "",
+          // 2. DD-MMM-YYYY format (07-Jan-2000)
+          const mmmMatch = dateStrTrimmed.match(/^(\d{1,2})[-/\s]([A-Za-z]{3})[-/\s](\d{4})/i);
+          if (mmmMatch) {
+            const monthNames = {
+              'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
+              'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
+              'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+            };
+            
+            const day = mmmMatch[1].padStart(2, '0');
+            const month = monthNames[mmmMatch[2].toLowerCase().substring(0, 3)] || '01';
+            const year = mmmMatch[3];
+            return `${year}-${month}-${day}`;
+          }
+          
+          // 3. Excel serial number (like 44197)
+          if (/^\d+$/.test(dateStrTrimmed)) {
+            const excelSerial = parseInt(dateStrTrimmed, 10);
+            if (excelSerial > 0) {
+              const excelEpoch = new Date(1899, 11, 30); // Excel epoch
+              const date = new Date(excelEpoch.getTime() + (excelSerial - 1) * 24 * 60 * 60 * 1000);
+              return date.toISOString().split('T')[0];
+            }
+          }
+          
+          // 4. Try JavaScript Date parsing
+          const parsedDate = new Date(dateStrTrimmed);
+          if (!isNaN(parsedDate.getTime())) {
+            return parsedDate.toISOString().split('T')[0];
+          }
+          
+          // 5. Try removing time part if present
+          const dateOnly = dateStrTrimmed.split(' ')[0];
+          const dateParts = dateOnly.split(/[-/\s]/);
+          if (dateParts.length === 3) {
+            let year, month, day;
+            
+            // Try to determine format
+            if (dateParts[0].length === 4) {
+              // YYYY-MM-DD
+              year = dateParts[0];
+              month = dateParts[1].padStart(2, '0');
+              day = dateParts[2].padStart(2, '0');
+            } else {
+              // DD-MM-YYYY or MM-DD-YYYY
+              if (parseInt(dateParts[0]) > 12) {
+                // DD-MM-YYYY
+                day = dateParts[0].padStart(2, '0');
+                month = dateParts[1].padStart(2, '0');
+                year = dateParts[2];
+              } else {
+                // MM-DD-YYYY
+                month = dateParts[0].padStart(2, '0');
+                day = dateParts[1].padStart(2, '0');
+                year = dateParts[2];
+              }
+            }
+            
+            if (year && month && day) {
+              return `${year}-${month}-${day}`;
+            }
+          }
+        } catch (e) {
+          console.warn("Date parsing error:", e);
+        }
+        
+        console.warn("Could not parse date:", dateStrTrimmed);
+        return '';
+      };
+
+      // Helper function to format phone numbers
+      const formatPhone = (phone) => {
+        if (!phone) return '';
+        const phoneStr = String(phone).replace(/\D/g, '');
+        return phoneStr.slice(0, 10);
+      };
+
+      // 🔧 IMPROVED: Process each row with better error reporting
+      const validResignations = [];
+      const validationErrors = [];
+      const duplicateChecks = {
+        emails: new Set(),
+        phones: new Set(),
+        panNos: new Set(),
+        workEmails: new Set()
+      };
+
+      // Track which columns exist in the file
+      const firstRow = jsonData[0];
+      const columnNames = Object.keys(firstRow);
+      console.log("Detected columns:", columnNames);
+
+      // Get column mapping
+      const getColumnMap = () => {
+        const map = {};
+        
+        // Common column name variations
+        const possibleNames = {
+          fullName: ['Full Name*', 'Full Name', 'FullName', 'fullName', 'Name', 'Employee Name'],
+          birthDate: ['Birth Date* (YYYY-MM-DD)', 'Birth Date', 'BirthDate', 'birthDate', 'DOB', 'Date of Birth'],
+          email: ['Email*', 'Email', 'email', 'Personal Email', 'personalEmail'],
+          workEmail: ['Work Email*', 'Work Email', 'workEmail', 'WorkEmail', 'Company Email'],
+          phone: ['Phone* (10 digits)', 'Phone', 'phone', 'Phone Number', 'Mobile', 'Contact Number'],
+          emergencyContact: ['Emergency Contact* (10 digits)', 'Emergency Contact', 'emergencyContact', 'EmergencyContact', 'Emergency Phone'],
+          hireDate: ['Hire Date* (YYYY-MM-DD)', 'Hire Date', 'HireDate', 'hireDate', 'Joining Date', 'Start Date'],
+          department: ['Department*', 'Department', 'department', 'Dept'],
+          reportingManager: ['Reporting Manager*', 'Reporting Manager', 'reportingManager', 'ReportingManager', 'Manager'],
+          addedOn: ['Added On* (YYYY-MM-DD)', 'Added On', 'addedOn', 'AddedOn', 'Created Date'],
+          address: ['Address*', 'Address', 'address', 'Permanent Address'],
+          currentAddress: ['Current Address*', 'Current Address', 'currentAddress', 'CurrentAddress', 'Residential Address'],
+          pincode: ['Pincode* (6 digits)', 'Pincode', 'pincode', 'Pin Code', 'Postal Code'],
+          state: ['State*', 'State', 'state', 'Province'],
+          city: ['City*', 'City', 'city', 'Town'],
+          panNo: ['PAN No* (ABCDE1234F)', 'PAN No', 'PAN', 'panNo', 'pan', 'PAN Number'],
+          password: ['Password* (min 6 characters)', 'Password', 'password', 'Pass'],
+          confirmPassword: ['Confirm Password* (min 6 characters)', 'Confirm Password', 'confirmPassword', 'ConfirmPassword']
+        };
+        
+        // Find actual column names
+        Object.keys(possibleNames).forEach(key => {
+          for (const possibleName of possibleNames[key]) {
+            if (columnNames.some(col => col.toLowerCase() === possibleName.toLowerCase())) {
+              map[key] = possibleName;
+              break;
+            }
+          }
+        });
+        
+        return map;
+      };
+
+      const columnMap = getColumnMap();
+      console.log("Column mapping:", columnMap);
+
+      // Today's date for validation
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      jsonData.forEach((row, index) => {
+        const rowNumber = index + 2; // +2 because Excel rows start at 1 and header is row 1
+        const rowErrors = [];
+        
+        // 🔧 IMPROVED: Extract data with column mapping
+        const extractValue = (field) => {
+          if (columnMap[field] && row[columnMap[field]] !== undefined) {
+            return String(row[columnMap[field]]).trim();
+          }
+          // Try direct field names
+          return String(row[field] || '').trim();
+        };
+
+        const fullName = extractValue('fullName');
+        const birthDate = parseDate(extractValue('birthDate'));
+        const email = extractValue('email').toLowerCase();
+        const workEmail = extractValue('workEmail').toLowerCase();
+        const phone = formatPhone(extractValue('phone'));
+        const emergencyContact = formatPhone(extractValue('emergencyContact'));
+        const hireDate = parseDate(extractValue('hireDate'));
+        const department = extractValue('department');
+        const reportingManager = extractValue('reportingManager');
+        const addedOn = parseDate(extractValue('addedOn')) || new Date().toISOString().split('T')[0];
+        const address = extractValue('address');
+        const currentAddress = extractValue('currentAddress');
+        const pincode = extractValue('pincode').replace(/\D/g, '').slice(0, 6);
+        const state = extractValue('state');
+        const city = extractValue('city');
+        const panNo = extractValue('panNo').toUpperCase().replace(/\s/g, '');
+        const password = extractValue('password');
+        const confirmPassword = extractValue('confirmPassword');
+
+        // 🔧 IMPROVED: Skip empty rows
+        if (!fullName && !email && !phone) {
+          console.log(`Skipping row ${rowNumber}: All key fields are empty`);
+          return; // Skip this row entirely
+        }
+
+        // Validate required fields
+        if (!fullName) rowErrors.push("Full Name is required");
+        if (!email) rowErrors.push("Email is required");
+        if (!workEmail) rowErrors.push("Work Email is required");
+        if (!phone) rowErrors.push("Phone number is required");
+        if (!password) rowErrors.push("Password is required");
+
+        // Only validate other fields if basic ones are present
+        if (fullName && email && workEmail && phone && password) {
+          if (!birthDate) rowErrors.push("Birth Date is required");
+          if (!emergencyContact) rowErrors.push("Emergency Contact is required");
+          if (!hireDate) rowErrors.push("Hire Date is required");
+          if (!department) rowErrors.push("Department is required");
+          if (!reportingManager) rowErrors.push("Reporting Manager is required");
+          if (!address) rowErrors.push("Address is required");
+          if (!currentAddress) rowErrors.push("Current Address is required");
+          if (!pincode) rowErrors.push("Pincode is required");
+          if (!state) rowErrors.push("State is required");
+          if (!city) rowErrors.push("City is required");
+          if (!panNo) rowErrors.push("PAN Number is required");
+          if (!confirmPassword) rowErrors.push("Confirm Password is required");
+        }
+
+        // Validate formats (only if field exists)
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          rowErrors.push("Invalid email format");
+        }
+
+        if (workEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(workEmail)) {
+          rowErrors.push("Invalid work email format");
+        }
+
+        if (phone && !/^[0-9]{10}$/.test(phone)) {
+          rowErrors.push("Phone must be exactly 10 digits");
+        }
+
+        if (emergencyContact && !/^[0-9]{10}$/.test(emergencyContact)) {
+          rowErrors.push("Emergency Contact must be exactly 10 digits");
+        }
+
+        if (pincode && !/^[0-9]{6}$/.test(pincode)) {
+          rowErrors.push("Pincode must be exactly 6 digits");
+        }
+
+        if (panNo && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(panNo)) {
+          rowErrors.push("Invalid PAN number format (should be ABCDE1234F)");
+        }
+
+        // Password validations
+        if (password && password.length < 6) {
+          rowErrors.push("Password must be at least 6 characters");
+        }
+
+        // Validate passwords match
+        if (password && confirmPassword && password !== confirmPassword) {
+          rowErrors.push("Password and Confirm Password do not match");
+        }
+
+        // Check for duplicates within the file
+        if (email && duplicateChecks.emails.has(email)) {
+          rowErrors.push("Duplicate email in file");
+        }
+        
+        if (phone && duplicateChecks.phones.has(phone)) {
+          rowErrors.push("Duplicate phone number in file");
+        }
+        
+        if (panNo && duplicateChecks.panNos.has(panNo)) {
+          rowErrors.push("Duplicate PAN number in file");
+        }
+        
+        if (workEmail && duplicateChecks.workEmails.has(workEmail)) {
+          rowErrors.push("Duplicate work email in file");
+        }
+
+        // Validate dates
+        const birthDateObj = birthDate ? new Date(birthDate) : null;
+        const hireDateObj = hireDate ? new Date(hireDate) : null;
+        const addedOnObj = addedOn ? new Date(addedOn) : null;
+
+        if (hireDate && isNaN(hireDateObj.getTime())) {
+          rowErrors.push("Invalid Hire Date format");
+        } else if (hireDate && hireDateObj > today) {
+          rowErrors.push("Hire Date cannot be in the future");
+        }
+
+        if (addedOn && isNaN(addedOnObj.getTime())) {
+          rowErrors.push("Invalid Added On date format");
+        } else if (addedOn && addedOnObj > today) {
+          rowErrors.push("Added On date cannot be in the future");
+        }
+
+        // Validate hire date is after birth date
+        if (birthDate && hireDate && hireDateObj <= birthDateObj) {
+          rowErrors.push("Hire Date must be after Birth Date");
+        }
+
+        // Validate age at hire (minimum 18 years)
+        if (birthDate && hireDate) {
+          const ageAtHire = hireDateObj.getFullYear() - birthDateObj.getFullYear();
+          if (ageAtHire < 18) {
+            rowErrors.push("Employee must be at least 18 years old at hire");
+          }
+        }
+
+        // 🔧 IMPROVED: Show what data was extracted
+        if (rowErrors.length > 0) {
+          console.log(`Row ${rowNumber} errors:`, rowErrors);
+          console.log(`Row ${rowNumber} data:`, {
+            fullName, email, workEmail, phone, password,
+            birthDate, hireDate, panNo
+          });
+        }
+
+        // If no errors, add to valid records
+        if (rowErrors.length === 0) {
+          const resignationData = {
+            fullName,
+            birthDate: birthDate || null,
+            email,
+            workEmail,
+            phone: phone || "",
+            emergencyContact: emergencyContact || "",
+            hireDate: hireDate || null,
+            department: department || "",
+            reportingManager: reportingManager || "",
+            addedOn: addedOn || new Date().toISOString().split('T')[0],
+            address: address || "",
+            currentAddress: currentAddress || "",
+            pincode: pincode || "",
+            state: state || "",
+            city: city || "",
+            panNo: panNo ? panNo.toUpperCase() : "",
+            password,
+            resignationDate: new Date().toISOString().split('T')[0],
+            lastWorkingDay: null,
+            resignationReason: "",
+            status: "Pending",
           };
 
-          // Validate loaded data
-          if (!newFormData.fullName.trim()) tempErrors.fullName = "Full Name is required";
-          if (!newFormData.birthDate) tempErrors.birthDate = "Birth Date is required";
-          
-          if (!newFormData.email.trim()) {
-            tempErrors.email = "Email is required";
-          } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newFormData.email)) {
-            tempErrors.email = "Please enter a valid email address";
-          }
-          
-          if (!newFormData.workEmail.trim()) {
-            tempErrors.workEmail = "Work Email is required";
-          } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newFormData.workEmail)) {
-            tempErrors.workEmail = "Please enter a valid work email address";
-          }
-          
-          if (!newFormData.phone.trim()) {
-            tempErrors.phone = "Phone number is required";
-          } else if (!/^[0-9]{10}$/.test(newFormData.phone)) {
-            tempErrors.phone = "Please enter a valid 10-digit phone number";
-          }
-          
-          if (!newFormData.emergencyContact.trim()) {
-            tempErrors.emergencyContact = "Emergency Contact is required";
-          } else if (!/^[0-9]{10}$/.test(newFormData.emergencyContact)) {
-            tempErrors.emergencyContact = "Please enter a valid 10-digit emergency contact number";
-          }
-          
-          if (!newFormData.hireDate) tempErrors.hireDate = "Hire Date is required";
-          if (!newFormData.department.trim()) tempErrors.department = "Department is required";
-          if (!newFormData.reportingManager.trim()) tempErrors.reportingManager = "Reporting Manager is required";
-          if (!newFormData.addedOn) tempErrors.addedOn = "Added On date is required";
-          
-          if (!newFormData.address.trim()) tempErrors.address = "Address is required";
-          if (!newFormData.currentAddress.trim()) tempErrors.currentAddress = "Current Address is required";
-          
-          if (!newFormData.pincode.trim()) {
-            tempErrors.pincode = "Pincode is required";
-          } else if (!/^[0-9]{6}$/.test(newFormData.pincode)) {
-            tempErrors.pincode = "Please enter a valid 6-digit pincode";
-          }
-          
-          if (!newFormData.state.trim()) tempErrors.state = "State is required";
-          if (!newFormData.city.trim()) tempErrors.city = "City is required";
-          
-          if (!newFormData.panNo.trim()) {
-            tempErrors.panNo = "PAN Number is required";
-          } else if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(newFormData.panNo.toUpperCase())) {
-            tempErrors.panNo = "Please enter a valid PAN number (Format: ABCDE1234F)";
-          }
-          
-          // Validate password
-          if (!newFormData.password.trim()) {
-            tempErrors.password = "Password is required";
-          } else if (newFormData.password.length < 6) {
-            tempErrors.password = "Password must be at least 6 characters";
-          }
+          validResignations.push(resignationData);
 
-          if (Object.keys(tempErrors).length > 0) {
-            setErrors(tempErrors);
-            alert("Some fields in the Excel file have validation errors. Please check the form.");
-          } else {
-            setErrors({});
-            alert("Data loaded from Excel successfully!");
-          }
+          // Add to duplicate checks
+          duplicateChecks.emails.add(email);
+          duplicateChecks.phones.add(phone);
+          duplicateChecks.panNos.add(panNo);
+          duplicateChecks.workEmails.add(workEmail);
           
-          setFormData(newFormData);
+          console.log(`✅ Row ${rowNumber} added: ${fullName} (${email})`);
         } else {
-          alert("No data found in the Excel file.");
+          validationErrors.push({
+            row: rowNumber,
+            employee: fullName || email || `Row ${rowNumber}`,
+            errors: rowErrors
+          });
+          
+          console.log(`❌ Row ${rowNumber} failed:`, rowErrors);
         }
-      } catch (error) {
-        console.error("Error reading Excel file:", error);
-        alert("Error reading Excel file. Please check the format.");
+      });
+
+      // Show detailed summary
+      console.log(`=== VALIDATION SUMMARY ===`);
+      console.log(`Total rows: ${jsonData.length}`);
+      console.log(`Valid records: ${validResignations.length}`);
+      console.log(`Invalid records: ${validationErrors.length}`);
+      console.log(`First valid record:`, validResignations[0]);
+
+      let summaryMessage = `Processed ${jsonData.length} rows:\n`;
+      summaryMessage += `• Valid records: ${validResignations.length}\n`;
+      summaryMessage += `• Records with errors: ${validationErrors.length}\n\n`;
+
+      if (validationErrors.length > 0) {
+        summaryMessage += "First 5 records with errors:\n";
+        validationErrors.slice(0, 5).forEach(error => {
+          summaryMessage += `Row ${error.row} (${error.employee}): ${error.errors[0]}\n`;
+        });
+        
+        if (validationErrors.length > 5) {
+          summaryMessage += `... and ${validationErrors.length - 5} more errors\n`;
+        }
+        
+        // Show sample of errors for debugging
+        console.log("Sample errors:", validationErrors.slice(0, 3));
       }
-    };
+
+      console.log('Valid resignations to upload:', validResignations.length);
+      console.log('Sample data structure:', validResignations[0]);
+
+      // If no valid records, show more detailed error
+      if (validResignations.length === 0) {
+        alert(
+          `❌ No valid records found!\n\n` +
+          `Possible issues:\n` +
+          `1. Check if you're using the correct Excel template\n` +
+          `2. Verify all required columns are present\n` +
+          `3. Check date formats (YYYY-MM-DD)\n` +
+          `4. Ensure no empty rows\n\n` +
+          `First error: ${validationErrors[0]?.errors[0] || 'Unknown error'}`
+        );
+        return;
+      }
+
+      // Ask user what to do
+      if (validResignations.length > 0) {
+        const userChoice = window.confirm(
+          `${summaryMessage}\n\n` +
+          `Do you want to upload ${validResignations.length} valid records?\n` +
+          `(Click Cancel to only load first valid record into form)`
+        );
+
+        if (userChoice && validResignations.length > 0) {
+          // Bulk upload to backend
+          try {
+            setIsSubmitting(true);
+            
+            console.log('=== SENDING BULK UPLOAD DATA ===');
+            console.log('Count:', validResignations.length);
+            console.log('First record sample:', {
+              fullName: validResignations[0].fullName,
+              email: validResignations[0].email,
+              passwordLength: validResignations[0].password?.length
+            });
+
+            // Send to backend
+           const response = await axios.post(`${API_BASE}/bulk-upload`, {
+  resignations: validResignations
+}, {
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 60000
+});
+
+           console.log('=== BULK UPLOAD RESPONSE ===');
+console.log('Response:', response.data);
+            
+            // Handle response (keep your existing success/error handling)
+            // ... (your existing response handling code) ...
+// Handle response
+if (response.data.success) {
+  alert(`✅ ${response.data.message}\n\n` +
+    `• Total processed: ${response.data.summary?.totalRecords || response.data.count}\n` +
+    `• Successfully uploaded: ${response.data.count}\n` +
+    `• Failed: ${response.data.summary?.failedRecords || 0}\n` +
+    `• Tokens generated: ${response.data.data?.employees?.length || 0}`);
+  
+  // Store tokens if needed
+  if (response.data.data?.employees) {
+    // You can store tokens for each employee
+    const employeesWithTokens = response.data.data.employees.filter(emp => emp.token);
+    console.log(`Employees with tokens: ${employeesWithTokens.length}`);
     
-    reader.onerror = () => {
-      alert("Error reading file. Please try again.");
-    };
-    
-    reader.readAsArrayBuffer(file);
-    e.target.value = '';
+    // Optionally store the first token
+    if (response.data.data.firstEmployeeToken) {
+      localStorage.setItem('bulkUploadToken', response.data.data.firstEmployeeToken);
+    }
+  }
+  
+  // Refresh data or perform other actions
+  if (onSaveSuccess) {
+    onSaveSuccess();
+  }
+} else {
+  alert(`❌ Upload failed: ${response.data.error || 'Unknown error'}`);
+}
+          } catch (error) {
+            console.error("Error in bulk upload:", error);
+            // ... (your existing error handling) ...
+          } finally {
+            setIsSubmitting(false);
+          }
+        } else if (validResignations.length > 0) {
+          // Load first valid record into form
+          // ... (your existing form loading code) ...
+        }
+      }
+
+    } catch (error) {
+      console.error("Error reading Excel file:", error);
+      alert(
+        `❌ Error reading Excel file\n\n` +
+        `Error: ${error.message}\n\n` +
+        `Please check:\n` +
+        `1. File is not corrupted\n` +
+        `2. File format is .xlsx, .xls, or .csv\n` +
+        `3. File follows the template format`
+      );
+    }
   };
+  
+  reader.onerror = () => {
+    alert("❌ Error reading file. Please try again.");
+  };
+  
+  reader.readAsArrayBuffer(file);
+  e.target.value = '';
+};
 
   const getInputStyle = (fieldName) => ({
     borderRadius: "10px",
