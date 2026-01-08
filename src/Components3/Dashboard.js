@@ -321,7 +321,7 @@ export default function Dashboard() {
         <div>
           <FaChartLine size={22} color="#EAA012" className="me-2" />
           <span>
-            <strong>Resignation Alert:</strong> {kpis.pendingResignations} pending resignation requests.
+            <strong>Registration Alert:</strong> {kpis.pendingResignations} pending registration requests.
             {kpis.pendingResignations > 0 && (
               <span className="text-danger"> Requires HR attention.</span>
             )}
