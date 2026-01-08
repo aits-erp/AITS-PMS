@@ -229,89 +229,160 @@ export default function NewGoal({ editingGoal, onSaveSuccess, onCancelEdit }) {
 
   // Download Excel template
   const downloadExcelTemplate = () => {
-    const emptyData = [
-      {
-        "Goal": "",
-        "Progress": "",
-        "IsGroup": "",
-        "Status": "",
-        "Employee ID": "",
-        "Employee": "",
-        "Company": "",
-        "Description": ""
-      }
-    ];
+  const emptyData = [
+    {
+      "Goal": "Example Goal 1",
+      "Progress": "50",
+      "IsGroup": "No",
+      "Status": "Pending",
+      "Employee ID": "EMP001",
+      "Employee": "John Doe",
+      "Company": "ABC Corp",
+      "Description": "Complete project documentation"
+    },
+    {
+      "Goal": "Example Goal 2",
+      "Progress": "25",
+      "IsGroup": "Yes",
+      "Status": "Preparing",
+      "Employee ID": "EMP002",
+      "Employee": "Jane Smith",
+      "Company": "XYZ Ltd",
+      "Description": "Team training session"
+    }
+  ];
 
-    const worksheet = XLSX.utils.json_to_sheet(emptyData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Goals Template");
-    
-    const wscols = [
-      { wch: 30 }, // Goal column width
-      { wch: 15 }, // Progress column width
-      { wch: 15 }, // IsGroup column width
-      { wch: 15 }, // Status column width
-      { wch: 25 }, // Employee ID column width
-      { wch: 25 }, // Employee column width
-      { wch: 35 }, // Company column width
-      { wch: 40 }, // Description column width
-    ];
-    worksheet["!cols"] = wscols;
+  const worksheet = XLSX.utils.json_to_sheet(emptyData);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Goals Template");
+  
+  // Add column widths
+  const wscols = [
+    { wch: 30 }, // Goal
+    { wch: 15 }, // Progress
+    { wch: 10 }, // IsGroup
+    { wch: 15 }, // Status
+    { wch: 20 }, // Employee ID
+    { wch: 25 }, // Employee
+    { wch: 25 }, // Company
+    { wch: 40 }, // Description
+  ];
+  worksheet["!cols"] = wscols;
 
-    XLSX.writeFile(workbook, "Goals_Template.xlsx");
-  };
+  XLSX.writeFile(workbook, "Goals_Template.xlsx");
+};
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+ const handleFileUpload = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const data = new Uint8Array(event.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+  const reader = new FileReader();
+  reader.onload = async (event) => {
+    try {
+      setIsSubmitting(true);
+      const data = new Uint8Array(event.target.result);
+      const workbook = XLSX.read(data, { type: "array" });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      
+      // Convert to JSON with raw values (preserve exactly what's in Excel)
+      const jsonData = XLSX.utils.sheet_to_json(firstSheet, { 
+        defval: "",
+        raw: false 
+      });
 
-        if (jsonData.length > 0) {
-          const newGoals = jsonData.map((row) => {
-            const goal = row["Goal"] || row["goal"] || row["GOAL"] || "";
-            const progress = row["Progress"] || row["progress"] || row["PROGRESS"] || "";
-            const isGroup = row["Is Group"] || row["IsGroup"] || row["is_group"] || row["Group"] || row["group"] || false;
-            const status = row["Status"] || row["status"] || row["STATUS"] || "Pending";
-            const employeeId = row["Employee ID"] || row["employeeId"] || row["EmployeeID"] || "";
-            const employee = row["Employee"] || row["employee"] || row["EMPLOYEE"] || "";
-            const company = row["Company"] || row["company"] || row["COMPANY"] || "";
-            const description = row["Description"] || row["description"] || row["DESCRIPTION"] || "";
+      console.log("Imported data:", jsonData); // Debug log
 
-            return {
-              goal: goal.toString(),
-              progress: progress.toString(),
-              isGroup: isGroup === "Yes" || isGroup === "yes" || isGroup === true || isGroup === "TRUE",
-              status: status.toString(),
-              employeeId: employeeId.toString(),
-              employee: employee.toString(),
-              company: company.toString(),
-              description: description.toString(),
-            };
-          });
+      if (jsonData.length > 0) {
+        const newGoals = jsonData.map((row, index) => {
+          // Debug: Log each row to see what's being parsed
+          console.log(`Row ${index + 1}:`, row);
 
-          await axios.post(`${GOALS_API}/bulk-import`, newGoals);
-          
-          if (onSaveSuccess) {
-            onSaveSuccess();
+          // Extract values with multiple possible column name variations
+          const goal = row["Goal"] || row["goal"] || row["GOAL"] || "";
+          const progress = row["Progress"] || row["progress"] || row["PROGRESS"] || "";
+          const isGroupRaw = row["IsGroup"] || row["Is Group"] || row["is_group"] || row["Group"] || row["group"] || row["IsGroup"] || "";
+          const status = row["Status"] || row["status"] || row["STATUS"] || "Pending";
+          const employeeId = row["Employee ID"] || row["employeeId"] || row["EmployeeID"] || row["Employee Id"] || "";
+          const employee = row["Employee"] || row["employee"] || row["EMPLOYEE"] || "";
+          const company = row["Company"] || row["company"] || row["COMPANY"] || "";
+          const description = row["Description"] || row["description"] || row["DESCRIPTION"] || "";
+
+          // Handle IsGroup conversion
+          let isGroup = false;
+          if (typeof isGroupRaw === 'boolean') {
+            isGroup = isGroupRaw;
+          } else if (typeof isGroupRaw === 'string') {
+            isGroup = isGroupRaw.toLowerCase() === 'yes' || 
+                      isGroupRaw.toLowerCase() === 'true' || 
+                      isGroupRaw === '1' || 
+                      isGroupRaw === 'TRUE';
+          } else if (typeof isGroupRaw === 'number') {
+            isGroup = isGroupRaw === 1;
           }
-          
-          alert(`${newGoals.length} goals imported successfully!`);
+
+          // Validate required fields
+          if (!goal.trim()) {
+            throw new Error(`Row ${index + 1}: Goal is required`);
+          }
+
+          if (!employee.trim()) {
+            throw new Error(`Row ${index + 1}: Employee is required`);
+          }
+
+          return {
+            goal: goal.toString().trim(),
+            progress: progress.toString().trim(),
+            isGroup: isGroup,
+            status: status.toString().trim() || "Pending",
+            employeeId: employeeId.toString().trim(),
+            employee: employee.toString().trim(),
+            company: company.toString().trim(),
+            description: description.toString().trim(),
+          };
+        });
+
+        console.log("Processed goals:", newGoals); // Debug log
+
+        // Validate at least one valid row
+        const validGoals = newGoals.filter(g => g.goal && g.employee);
+        
+        if (validGoals.length === 0) {
+          throw new Error("No valid goals found in the file. Please check that Goal and Employee columns are filled.");
         }
-      } catch (err) {
-        console.error("Error importing data", err);
-        alert("Error importing data");
+
+        // Send to backend
+        const response = await axios.post(`${GOALS_API}/bulk-import`, validGoals);
+        
+        if (onSaveSuccess) {
+          onSaveSuccess();
+        }
+        
+        alert(`${validGoals.length} goals imported successfully!`);
+        resetForm();
+      } else {
+        alert("The Excel file is empty or has no data.");
       }
-    };
-    reader.readAsArrayBuffer(file);
-    e.target.value = '';
+    } catch (err) {
+      console.error("Error importing data", err);
+      
+      // Show user-friendly error message
+      if (err.response) {
+        // Backend error
+        alert(`Import failed: ${err.response.data.error || err.response.data.message || 'Server error'}`);
+      } else if (err.message.includes("Goal is required") || err.message.includes("Employee is required")) {
+        // Validation error
+        alert(`Import failed: ${err.message}`);
+      } else {
+        // General error
+        alert(`Error importing data: ${err.message || 'Please check your Excel format and try again.'}`);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+  reader.readAsArrayBuffer(file);
+  e.target.value = '';
+};
 
   const inputStyle = {
     background: "#f8f9fa",
