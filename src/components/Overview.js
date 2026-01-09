@@ -412,71 +412,222 @@ export default function Overview({ editingItem, onSaveSuccess, onCancelEdit }) {
   };
 
   const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const file = e.target.files[0];
+  if (!file) return;
 
-    const validTypes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
-      'text/csv'
-    ];
+  const validTypes = [
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel',
+    'text/csv'
+  ];
+  
+  if (!validTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls|csv)$/)) {
+    alert("Please upload a valid Excel or CSV file");
+    e.target.value = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    try {
+      const data = new Uint8Array(event.target.result);
+      const workbook = XLSX.read(data, { type: "array" });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+
+      if (jsonData.length === 0) {
+        alert("The Excel file is empty or has no data rows.");
+        return;
+      }
+
+      console.log(`📊 Excel loaded: ${jsonData.length} rows found`);
+
+      // OPTION 1: Process all rows and submit each one
+      processMultipleRows(jsonData);
+      
+      // OPTION 2: Just load the first row into form (current behavior)
+      // loadFirstRowIntoForm(jsonData);
+
+    } catch (error) {
+      console.error("Error reading Excel:", error);
+      alert("Error reading the uploaded file. Please check the format and try again.");
+    }
+  };
+  
+  reader.onerror = () => {
+    alert("Error reading file. Please try again.");
+  };
+  
+  reader.readAsArrayBuffer(file);
+  e.target.value = '';
+};
+
+// New function to process multiple rows
+const processMultipleRows = async (rows) => {
+  const normalizeKey = (key) => {
+    if (!key) return '';
+    return key.toString().trim().toLowerCase().replace(/\s+/g, '');
+  };
+
+  const results = [];
+  const errors = [];
+
+  // Confirm bulk upload
+  const confirmUpload = window.confirm(
+    `Found ${rows.length} rows in Excel file.\n` +
+    `Do you want to upload all ${rows.length} records?\n\n` +
+    `Note: This will create multiple overview records.`
+  );
+
+  if (!confirmUpload) {
+    // Just load first row into form
+    loadFirstRowIntoForm(rows);
+    return;
+  }
+
+  setIsSubmitting(true);
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
     
-    if (!validTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls|csv)$/)) {
-      alert("Please upload a valid Excel or CSV file");
-      e.target.value = '';
-      return;
+    // Normalize row keys
+    const rowKeys = Object.keys(row);
+    const normalizedRow = {};
+    rowKeys.forEach(key => {
+      normalizedRow[normalizeKey(key)] = row[key];
+    });
+
+    const formData = {
+      series: normalizedRow.series || "",
+      employeeId: normalizedRow.employeeid || normalizedRow.id || "",
+      employee: normalizedRow.employee || normalizedRow.name || "",
+      company: normalizedRow.company || "",
+      appraisalCycle: normalizedRow.appraisalcycle || normalizedRow.appraisal || "",
+    };
+
+    // Validate required fields
+    if (!formData.series || !formData.employee || !formData.appraisalCycle) {
+      errors.push({
+        row: i + 1,
+        data: formData,
+        error: "Missing required fields"
+      });
+      continue;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = new Uint8Array(event.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+    // Validate appraisal cycle format
+    const yearRegex = /^\d{4}-\d{4}$/;
+    if (!yearRegex.test(formData.appraisalCycle)) {
+      errors.push({
+        row: i + 1,
+        data: formData,
+        error: "Invalid appraisal cycle format (should be YYYY-YYYY)"
+      });
+      continue;
+    }
 
-        if (jsonData.length > 0) {
-          const firstRow = jsonData[0];
-          
-          const normalizeKey = (key) => {
-            if (!key) return '';
-            return key.toString().trim().toLowerCase().replace(/\s+/g, '');
-          };
+    try {
+      // Submit each row
+      const response = await fetch(`${API_BASE}/api/overview`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
 
-          const rowKeys = Object.keys(firstRow);
-          const normalizedRow = {};
-          rowKeys.forEach(key => {
-            normalizedRow[normalizeKey(key)] = firstRow[key];
-          });
-
-          const newForm = {
-            series: normalizedRow.series || "",
-            employeeId: normalizedRow.employeeid || normalizedRow.id || "",
-            employee: normalizedRow.employee || normalizedRow.name || "",
-            company: normalizedRow.company || "",
-            appraisalCycle: normalizedRow.appraisalcycle || normalizedRow.appraisal || "",
-          };
-          
-          setForm(newForm);
-          setIdSearchTerm(newForm.employeeId);
-          setNameSearchTerm(newForm.employee);
-          
-          alert("Data loaded from Excel file successfully!");
-        } else {
-          alert("The Excel file is empty or has no data rows.");
-        }
-      } catch (error) {
-        alert("Error reading the uploaded file. Please check the format and try again.");
+      if (response.ok) {
+        const result = await response.json();
+        results.push({
+          row: i + 1,
+          data: formData,
+          success: true,
+          result
+        });
+      } else {
+        const errorText = await response.text();
+        errors.push({
+          row: i + 1,
+          data: formData,
+          error: `HTTP ${response.status}: ${errorText}`
+        });
       }
-    };
+
+      // Small delay to avoid overwhelming server
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+    } catch (err) {
+      errors.push({
+        row: i + 1,
+        data: formData,
+        error: err.message
+      });
+    }
+  }
+
+  setIsSubmitting(false);
+
+  // Show results
+  if (errors.length === 0) {
+    alert(`✅ Successfully uploaded ${results.length} records!`);
+    resetForm();
+    if (onSaveSuccess) {
+      onSaveSuccess();
+    }
+  } else {
+    const message = [
+      `Upload completed with results:`,
+      `✅ Successful: ${results.length}`,
+      `❌ Failed: ${errors.length}`,
+      ``,
+      `Failed rows:`,
+      ...errors.slice(0, 5).map(e => `Row ${e.row}: ${e.error}`),
+      errors.length > 5 ? `... and ${errors.length - 5} more errors` : ''
+    ].join('\n');
+
+    alert(message);
     
-    reader.onerror = () => {
-      alert("Error reading file. Please try again.");
-    };
-    
-    reader.readAsArrayBuffer(file);
-    e.target.value = '';
+    // If some succeeded, still refresh
+    if (results.length > 0 && onSaveSuccess) {
+      onSaveSuccess();
+    }
+  }
+};
+
+// Function to load first row into form (for single record editing)
+const loadFirstRowIntoForm = (rows) => {
+  if (rows.length === 0) return;
+  
+  const firstRow = rows[0];
+  const normalizeKey = (key) => {
+    if (!key) return '';
+    return key.toString().trim().toLowerCase().replace(/\s+/g, '');
   };
+
+  const rowKeys = Object.keys(firstRow);
+  const normalizedRow = {};
+  rowKeys.forEach(key => {
+    normalizedRow[normalizeKey(key)] = firstRow[key];
+  });
+
+  const newForm = {
+    series: normalizedRow.series || "",
+    employeeId: normalizedRow.employeeid || normalizedRow.id || "",
+    employee: normalizedRow.employee || normalizedRow.name || "",
+    company: normalizedRow.company || "",
+    appraisalCycle: normalizedRow.appraisalcycle || normalizedRow.appraisal || "",
+  };
+  
+  setForm(newForm);
+  setIdSearchTerm(newForm.employeeId);
+  setNameSearchTerm(newForm.employee);
+  
+  if (rows.length > 1) {
+    alert(`Loaded first row. File contains ${rows.length} rows total.\n\nTo upload all rows, click "Upload Excel" again and confirm bulk upload.`);
+  } else {
+    alert("Data loaded from Excel file successfully!");
+  }
+};
 
   const handleRetryLoadData = () => {
     fetchEmployeeData();
