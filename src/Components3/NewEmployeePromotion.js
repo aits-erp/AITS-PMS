@@ -439,8 +439,8 @@ export default function EmployeePromotionForm({ editingPromotion, onSaveSuccess,
           "Currency": "INR",
           "Company": "Shrirang Automation",
           "Property": "Designation",
-          "Current Value": "Senior Developer",
-          "New Value": "Team Lead",
+          "Current Value": "50000",
+          "New Value": "60000",
           "Justification": "Leadership skills demonstrated"
         }
       ];
@@ -470,88 +470,244 @@ export default function EmployeePromotionForm({ editingPromotion, onSaveSuccess,
   };
 
   const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const file = e.target.files[0];
+  if (!file) return;
 
-    const validTypes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
-      'text/csv'
-    ];
-    
-    if (!validTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls|csv)$/)) {
-      alert("Please upload a valid Excel or CSV file");
-      e.target.value = '';
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = new Uint8Array(event.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(firstSheet);
-
-        if (jsonData.length > 0) {
-          const firstRow = jsonData[0];
-          
-          // Extract data from Excel columns
-          const name = firstRow["Employee Name"] || firstRow["Employee"] || 
-                       firstRow["Name"] || firstRow["name"] || "";
-          const employeeId = firstRow["Employee ID"] || firstRow["Employee ID"] || 
-                           firstRow["employeeId"] || firstRow["emp_id"] || "";
-          const date = firstRow["Promotion Date"] || firstRow["Date"] || 
-                      firstRow["date"] || new Date().toISOString().split('T')[0];
-          const currency = firstRow["Currency"] || firstRow["currency"] || "INR";
-          const company = firstRow["Company"] || firstRow["company"] || "Shrirang Automation";
-          const property = firstRow["Property"] || firstRow["property"] || "";
-          const current = firstRow["Current Value"] || firstRow["Current"] || 
-                         firstRow["current"] || "";
-          const newValue = firstRow["New Value"] || firstRow["New"] || 
-                          firstRow["newValue"] || "";
-          const justification = firstRow["Justification"] || firstRow["justification"] || "";
-
-          // Format date if needed
-          let formattedDate = "";
-          if (date) {
-            if (typeof date === 'number') {
-              // Excel date serial number
-              const excelDate = new Date((date - 25569) * 86400 * 1000);
-              formattedDate = excelDate.toISOString().split('T')[0];
-            } else {
-              // String date
-              formattedDate = date.toString().split('T')[0];
-            }
-          }
-
-          setFormData({
-            name: name.toString(),
-            employeeId: employeeId.toString(),
-            date: formattedDate,
-            currency: currency.toString(),
-            company: company.toString(),
-            property: property.toString(),
-            current: current.toString(),
-            newValue: newValue.toString(),
-            justification: justification.toString(),
-          });
-          
-          // Update search term and employee info
-          setEmployee(name.toString());
-          setEmployeeId(employeeId.toString());
-          setSearchTerm(employeeId ? `${name} (${employeeId})` : name);
-          
-          alert("Promotion data loaded from Excel successfully!");
-        }
-      } catch (error) {
-        console.error("Error processing file:", error);
-        alert("Error processing the uploaded file: " + error.message);
-      }
-    };
-    reader.readAsArrayBuffer(file);
+  const validTypes = [
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel',
+    'text/csv'
+  ];
+  
+  if (!validTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls|csv)$/)) {
+    alert("Please upload a valid Excel or CSV file");
     e.target.value = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    try {
+      const data = new Uint8Array(event.target.result);
+      const workbook = XLSX.read(data, { type: "array" });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+
+      if (jsonData.length === 0) {
+        alert("The Excel file is empty or has no data rows.");
+        return;
+      }
+
+      console.log(`📊 Excel loaded: ${jsonData.length} promotion records found`);
+
+      // Ask user if they want to upload all rows or just load one
+      if (jsonData.length === 1) {
+        // If only one row, just load it into the form
+        loadSinglePromotion(jsonData[0]);
+      } else {
+        // Multiple rows - ask user what they want to do
+        const userChoice = window.confirm(
+          `Found ${jsonData.length} promotion records in the Excel file.\n\n` +
+          `Click "OK" to upload ALL records to the database.\n` +
+          `Click "Cancel" to load only the FIRST record into the form for editing.`
+        );
+
+        if (userChoice) {
+          // User chose to upload all records
+          uploadBulkPromotions(jsonData);
+        } else {
+          // User chose to load only first row into form
+          loadSinglePromotion(jsonData[0]);
+        }
+      }
+
+    } catch (error) {
+      console.error("Error processing file:", error);
+      alert("Error processing the uploaded file: " + error.message);
+    }
   };
+  
+  reader.onerror = () => {
+    alert("Error reading file. Please try again.");
+  };
+  
+  reader.readAsArrayBuffer(file);
+  e.target.value = '';
+};
+
+// Function to load single promotion into form
+const loadSinglePromotion = (row) => {
+  // Extract data from Excel columns
+  const name = row["Employee Name"] || row["Employee"] || 
+               row["Name"] || row["name"] || "";
+  const employeeId = row["Employee ID"] || row["Employee ID"] || 
+                     row["employeeId"] || row["emp_id"] || "";
+  const date = row["Promotion Date"] || row["Date"] || 
+              row["date"] || new Date().toISOString().split('T')[0];
+  const currency = row["Currency"] || row["currency"] || "INR";
+  const company = row["Company"] || row["company"] || "Shrirang Automation";
+  const property = row["Property"] || row["property"] || "";
+  const current = row["Current Value"] || row["Current"] || 
+                 row["current"] || "";
+  const newValue = row["New Value"] || row["New"] || 
+                  row["newValue"] || "";
+  const justification = row["Justification"] || row["justification"] || "";
+
+  // Format date if needed
+  let formattedDate = "";
+  if (date) {
+    if (typeof date === 'number') {
+      // Excel date serial number
+      const excelDate = new Date((date - 25569) * 86400 * 1000);
+      formattedDate = excelDate.toISOString().split('T')[0];
+    } else {
+      // String date
+      formattedDate = date.toString().split('T')[0];
+    }
+  }
+
+  setFormData({
+    name: name.toString(),
+    employeeId: employeeId.toString(),
+    date: formattedDate,
+    currency: currency.toString(),
+    company: company.toString(),
+    property: property.toString(),
+    current: current.toString(),
+    newValue: newValue.toString(),
+    justification: justification.toString(),
+  });
+  
+  // Update search term and employee info
+  setEmployee(name.toString());
+  setEmployeeId(employeeId.toString());
+  setSearchTerm(employeeId ? `${name} (${employeeId})` : name);
+  
+  alert("Promotion data loaded from Excel successfully!");
+};
+
+// Function to upload multiple promotions
+const uploadBulkPromotions = async (rows) => {
+  setIsSubmitting(true);
+  setSuccessMessage("");
+  
+  const results = {
+    success: 0,
+    failed: 0,
+    errors: []
+  };
+
+  // Process each row
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    
+    try {
+      // Extract data
+      const name = row["Employee Name"] || row["Employee"] || 
+                   row["Name"] || row["name"] || "";
+      const employeeId = row["Employee ID"] || row["Employee ID"] || 
+                         row["employeeId"] || row["emp_id"] || "";
+      const date = row["Promotion Date"] || row["Date"] || 
+                  row["date"] || new Date().toISOString().split('T')[0];
+      const currency = row["Currency"] || row["currency"] || "INR";
+      const company = row["Company"] || row["company"] || "Shrirang Automation";
+      const property = row["Property"] || row["property"] || "";
+      const current = row["Current Value"] || row["Current"] || 
+                     row["current"] || "";
+      const newValue = row["New Value"] || row["New"] || 
+                      row["newValue"] || "";
+      const justification = row["Justification"] || row["justification"] || "";
+
+      // Validate required fields
+      if (!name.trim()) {
+        results.errors.push(`Row ${i + 1}: Missing employee name`);
+        results.failed++;
+        continue;
+      }
+      if (!property.trim()) {
+        results.errors.push(`Row ${i + 1}: Missing property`);
+        results.failed++;
+        continue;
+      }
+      if (!newValue.trim()) {
+        results.errors.push(`Row ${i + 1}: Missing new value`);
+        results.failed++;
+        continue;
+      }
+      if (!justification.trim()) {
+        results.errors.push(`Row ${i + 1}: Missing justification`);
+        results.failed++;
+        continue;
+      }
+
+      // Format date
+      let formattedDate = "";
+      if (date) {
+        if (typeof date === 'number') {
+          const excelDate = new Date((date - 25569) * 86400 * 1000);
+          formattedDate = excelDate.toISOString().split('T')[0];
+        } else {
+          formattedDate = date.toString().split('T')[0];
+        }
+      }
+
+      // Prepare promotion data
+      const promotionData = {
+        name: name.toString().trim(),
+        employeeId: employeeId.toString().trim(),
+        date: formattedDate,
+        currency: currency.toString(),
+        company: company.toString().trim(),
+        property: property.toString().trim(),
+        current: current.toString().trim(),
+        newValue: newValue.toString().trim(),
+        justification: justification.toString().trim()
+      };
+
+      // Submit to API
+      const response = await axios.post(PROMOTION_API, promotionData);
+      
+      if (response.data.success) {
+        results.success++;
+      } else {
+        results.errors.push(`Row ${i + 1}: ${response.data.error || "Unknown error"}`);
+        results.failed++;
+      }
+
+      // Small delay to avoid overwhelming server
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+    } catch (error) {
+      results.failed++;
+      results.errors.push(`Row ${i + 1}: ${error.response?.data?.error || error.message}`);
+    }
+  }
+
+  setIsSubmitting(false);
+
+  // Show results
+  const successMessage = `Bulk upload completed!\n\n` +
+    `✅ Successfully uploaded: ${results.success} records\n` +
+    `❌ Failed: ${results.failed} records`;
+  
+  if (results.errors.length > 0) {
+    const errorDetails = results.errors.slice(0, 5).join('\n');
+    const extraErrors = results.errors.length > 5 ? 
+      `\n\n... and ${results.errors.length - 5} more errors` : '';
+    
+    alert(`${successMessage}\n\nError details:\n${errorDetails}${extraErrors}`);
+  } else {
+    alert(`${successMessage}\n\nAll records uploaded successfully!`);
+  }
+
+  // If any records were successful, refresh the list
+  if (results.success > 0 && onSaveSuccess) {
+    onSaveSuccess();
+  }
+
+  // Clear the form after bulk upload
+  resetForm();
+};
 
   const inputStyle = {
     borderRadius: "10px",
